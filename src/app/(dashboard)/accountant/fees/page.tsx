@@ -53,7 +53,7 @@ export default async function AccountantFeesPage() {
       profile.school_id,
       currentTermSnap.docs[0].id
     )
-    students = studentsWithoutFees
+    students = studentsWithoutFees as Array<{ id: string; full_name: string; student_number?: string }>
   }
 
   return (

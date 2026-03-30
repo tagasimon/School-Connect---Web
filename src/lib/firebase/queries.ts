@@ -9,9 +9,9 @@ function serializeTimestamps<T extends Record<string, unknown>>(data: T): T {
   const result: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(data)) {
     if (value && typeof value === 'object') {
-      if ('_seconds' in value && typeof (value as Timestamp).seconds === 'number') {
+      if ('_seconds' in value && typeof (value as any).seconds === 'number') {
         // Firestore Timestamp -> ISO string
-        result[key] = new Date((value as Timestamp).seconds * 1000).toISOString()
+        result[key] = new Date((value as any).seconds * 1000).toISOString()
       } else if (typeof value === 'object') {
         // Recursively handle nested objects
         result[key] = serializeTimestamps(value as Record<string, unknown>)

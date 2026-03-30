@@ -33,10 +33,10 @@ export default async function SchoolAdminClassesPage() {
       .get(),
   ])
 
-  const classes = classesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-  const teachers = teachersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-  const terms = termsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-  const students = studentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+  const classes = classesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as any)
+  const teachers = teachersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as any)
+  const terms = termsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as any)
+  const students = studentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as any)
 
   const teacherMap = new Map(teachers.map(t => [t.id, t.full_name]))
   const termMap = new Map(terms.map(t => [t.id, t.name]))

@@ -207,12 +207,13 @@ async function seedStudents() {
   console.log('\n── Students')
   for (const s of STUDENT_DATA) {
     const ref = db.collection('students').doc()
+    const [year, month, day] = s.dob.split('-').map(Number)
     await ref.set({
       school_id: SCHOOL_ID,
       class_id: classKeyToId[s.classKey],
       full_name: s.name,
       student_number: s.num,
-      date_of_birth: dateStr(...s.dob.split('-').map(Number)),
+      date_of_birth: dateStr(year, month, day),
       gender: s.gender,
       status: 'active',
       created_at: now(),

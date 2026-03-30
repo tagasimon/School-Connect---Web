@@ -12,8 +12,8 @@ function serializeTimestamps<T extends Record<string, unknown>>(data: T): T {
   const result: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(data)) {
     if (value && typeof value === 'object') {
-      if ('_seconds' in value && typeof (value as Timestamp).seconds === 'number') {
-        result[key] = { _seconds: (value as Timestamp).seconds, _nanoseconds: (value as Timestamp).nanoseconds }
+      if ('_seconds' in value && typeof (value as any).seconds === 'number') {
+        result[key] = { _seconds: (value as any).seconds, _nanoseconds: (value as any).nanoseconds }
       } else if (typeof value === 'object') {
         result[key] = serializeTimestamps(value as Record<string, unknown>)
       } else {

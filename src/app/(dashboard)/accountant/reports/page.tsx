@@ -19,7 +19,7 @@ export default async function AccountantReportsPage() {
   ])
 
   const fees = feesSnap.docs.map(doc => doc.data())
-  const terms = termsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+  const terms = termsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as any)
   const totalStudents = studentsSnap.size
 
   const totalBilled = fees.reduce((sum, f) => sum + (f.total_amount as number), 0)

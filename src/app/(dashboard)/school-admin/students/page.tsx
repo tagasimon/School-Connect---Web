@@ -24,8 +24,8 @@ export default async function SchoolAdminStudentsPage() {
       .get(),
   ])
 
-  const students = studentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-  const classes = classesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+  const students = studentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as any)
+  const classes = classesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as any)
 
   const classMap = new Map(classes.map(c => [c.id, c.name]))
   const studentsByClass: Record<string, number> = {}
