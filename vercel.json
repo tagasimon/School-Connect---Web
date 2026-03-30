@@ -4,17 +4,5 @@
   "installCommand": "npm install",
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
-  "regions": ["fra1"],
-  "env": {
-    "NEXT_PUBLIC_FIREBASE_API_KEY": "@next-public-firebase-api-key",
-    "FIREBASE_PROJECT_ID": "@firebase-project-id",
-    "FIREBASE_CLIENT_EMAIL": "@firebase-client-email",
-    "FIREBASE_PRIVATE_KEY": "@firebase-private-key",
-    "NEXT_PUBLIC_SUPABASE_URL": "@next-public-supabase-url",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@next-public-supabase-anon-key",
-    "SUPABASE_SERVICE_ROLE_KEY": "@supabase-service-role-key",
-    "AT_API_KEY": "@at-api-key",
-    "AT_USERNAME": "@at-username",
-    "AT_SENDER_ID": "@at-sender-id"
-  }
+  "regions": ["fra1"]
 }
