@@ -8,23 +8,24 @@ import { getCurrentTerm, getSubjectsForClass } from '@/lib/actions/results'
 export default async function ResultsClassPage({
   params,
 }: {
-  params: { classId: string }
+  params: Promise<{ classId: string }>
 }) {
+  const { classId } = await params
   const uid = await getSessionUid()
   if (!uid) redirect('/login')
 
   const profile = await getCurrentProfile(uid)
   if (!profile?.school_id) redirect('/login')
 
-  const classDoc = await adminDb().collection('classes').doc(params.classId).get()
+  const classDoc = await adminDb().collection('classes').doc(classId).get()
   if (!classDoc.exists) redirect('/teacher')
 
   const [term, subjectsSnap, studentsSnap] = await Promise.all([
     getCurrentTerm(profile.school_id),
-    getSubjectsForClass(params.classId),
+    getSubjectsForClass(classId),
     adminDb()
       .collection('students')
-      .where('class_id', '==', params.classId)
+      .where('class_id', '==', classId)
       .where('status', '==', 'active')
       .orderBy('full_name')
       .get(),
@@ -42,7 +43,7 @@ export default async function ResultsClassPage({
 
   return (
     <ResultsForm
-      params={params}
+      params={{ classId }}
       students={students}
       subjects={subjectsSnap}
       termId={term.id}

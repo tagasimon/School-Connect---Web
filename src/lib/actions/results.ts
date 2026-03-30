@@ -5,6 +5,27 @@ import { Timestamp } from 'firebase-admin/firestore'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 
+// Helper to serialize Firestore Timestamps
+function serializeTimestamps<T extends Record<string, unknown>>(data: T): T {
+  if (!data) return data
+  
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(data)) {
+    if (value && typeof value === 'object') {
+      if ('_seconds' in value && typeof (value as Timestamp).seconds === 'number') {
+        result[key] = { _seconds: (value as Timestamp).seconds, _nanoseconds: (value as Timestamp).nanoseconds }
+      } else if (typeof value === 'object') {
+        result[key] = serializeTimestamps(value as Record<string, unknown>)
+      } else {
+        result[key] = value
+      }
+    } else {
+      result[key] = value
+    }
+  }
+  return result as T
+}
+
 export async function uploadResults(
   classId: string,
   termId: string,
@@ -80,7 +101,7 @@ export async function getSubjectsForClass(classId: string) {
     .where('class_id', '==', classId)
     .get()
 
-  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+  return snap.docs.map(doc => serializeTimestamps({ id: doc.id, ...doc.data() }) as any)
 }
 
 async function getSchoolId(uid: string): Promise<string | null> {

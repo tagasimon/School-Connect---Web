@@ -7,20 +7,21 @@ import AttendanceForm from './attendance-form'
 export default async function AttendanceClassPage({
   params,
 }: {
-  params: { classId: string }
+  params: Promise<{ classId: string }>
 }) {
+  const { classId } = await params
   const uid = await getSessionUid()
   if (!uid) redirect('/login')
 
   const profile = await getCurrentProfile(uid)
   if (!profile?.school_id) redirect('/login')
 
-  const classDoc = await adminDb().collection('classes').doc(params.classId).get()
+  const classDoc = await adminDb().collection('classes').doc(classId).get()
   if (!classDoc.exists) redirect('/teacher')
 
   const studentsSnap = await adminDb()
     .collection('students')
-    .where('class_id', '==', params.classId)
+    .where('class_id', '==', classId)
     .where('status', '==', 'active')
     .orderBy('full_name')
     .get()
@@ -33,7 +34,7 @@ export default async function AttendanceClassPage({
 
   return (
     <AttendanceForm
-      params={params}
+      params={{ classId }}
       students={students}
       className={classDoc.data()?.name || 'Class'}
     />
