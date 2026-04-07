@@ -7,12 +7,11 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import {
-  DollarSign,
   CheckCircle,
   AlertTriangle,
-  ChevronRight,
   ArrowLeft,
-  Receipt,
+  Send,
+  Filter,
 } from 'lucide-react'
 
 interface ClassDoc {
@@ -35,7 +34,7 @@ interface StudentData {
   status: string
 }
 
-type PaymentState = Record<string, { amount: string; receiptNumber: string; notes: string }>
+type PaymentInput = Record<string, { amount: string; receiptNumber: string }>
 
 export default function AccountantFeesPage({
   schoolId,
@@ -50,15 +49,17 @@ export default function AccountantFeesPage({
   const [students, setStudents] = useState<StudentData[]>([])
   const [fees, setFees] = useState<Record<string, FeeData>>({})
   const [currentTerm, setCurrentTerm] = useState<{ id: string; name: string; year: number } | null>(null)
-  const [payments, setPayments] = useState<PaymentState>({})
+  const [paymentInputs, setPaymentInputs] = useState<PaymentInput>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
+  const [showPaid, setShowPaid] = useState(true)
 
   const handleSelectClass = async (cls: ClassDoc) => {
     setLoading(true)
     setSelectedClass(cls)
-    setPayments({})
+    setPaymentInputs({})
     setErrors({})
+    setShowPaid(true)
 
     const result = await getFeesByClass(schoolId, cls.id)
     setStudents(result.students as unknown as StudentData[])
@@ -72,19 +73,18 @@ export default function AccountantFeesPage({
     setStudents([])
     setFees({})
     setCurrentTerm(null)
-    setPayments({})
+    setPaymentInputs({})
     setErrors({})
   }
 
-  const updatePayment = (studentId: string, field: keyof PaymentState[string], value: string) => {
-    setPayments(prev => ({
+  const updateInput = (studentId: string, field: keyof PaymentInput[string], value: string) => {
+    setPaymentInputs(prev => ({
       ...prev,
       [studentId]: {
         ...prev[studentId],
         [field]: value,
       },
     }))
-    // Clear error when user types
     if (errors[studentId]) {
       setErrors(prev => {
         const next = { ...prev }
@@ -95,17 +95,17 @@ export default function AccountantFeesPage({
   }
 
   const handleSubmitPayment = (studentId: string) => {
-    const payment = payments[studentId]
+    const input = paymentInputs[studentId]
     const fee = fees[studentId]
 
-    if (!payment || !payment.amount || !payment.receiptNumber) return
+    if (!input || !input.amount || !input.receiptNumber) return
     if (!fee) return
 
-    const amount = parseInt(payment.amount)
+    const amount = parseInt(input.amount)
     const balance = fee.total_amount - fee.amount_paid
 
     if (amount > balance) {
-      setErrors(prev => ({ ...prev, [studentId]: `Amount exceeds balance of UGX ${balance.toLocaleString()}` }))
+      setErrors(prev => ({ ...prev, [studentId]: `Exceeds balance (UGX ${balance.toLocaleString()})` }))
       return
     }
 
@@ -114,27 +114,36 @@ export default function AccountantFeesPage({
         feeId: fee.id,
         studentId,
         amount,
-        receiptNumber: payment.receiptNumber.trim(),
-        notes: payment.notes || undefined,
+        receiptNumber: input.receiptNumber.trim(),
       })
 
       if (result.success) {
-        // Refresh the class data
         const updated = await getFeesByClass(schoolId, selectedClass!.id)
         setStudents(updated.students as unknown as StudentData[])
         setFees(updated.fees)
-        // Clear payment form for this student
-        setPayments(prev => {
+        setPaymentInputs(prev => {
           const next = { ...prev }
           delete next[studentId]
           return next
         })
         router.refresh()
       } else if (result.error) {
-        setErrors(prev => ({ ...prev, [studentId]: result.error || 'Payment failed' }))
+        setErrors(prev => ({ ...prev, [studentId]: result.error || 'Failed' }))
       }
     })
   }
+
+  // Filter: show only unpaid if toggle is off
+  const filteredStudents = students.filter(s => {
+    const fee = fees[s.id]
+    if (!showPaid && fee && fee.amount_paid >= fee.total_amount) return false
+    return true
+  })
+
+  const hasPendingPayments = filteredStudents.some(s => {
+    const fee = fees[s.id]
+    return fee && fee.amount_paid < fee.total_amount
+  })
 
   // ── Class Selection View ───────────────────────────────────────────────
 
@@ -148,29 +157,22 @@ export default function AccountantFeesPage({
 
         <Card className="bg-slate-900 border-slate-800">
           <CardHeader>
-            <CardTitle className="text-white flex items-center gap-2">
-              <DollarSign className="w-5 h-5 text-amber-400" />
-              Select a Class
-            </CardTitle>
+            <CardTitle className="text-white">Select a Class</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
-              <p className="text-slate-400 text-center py-8">Loading classes...</p>
+              <p className="text-slate-400 text-center py-8">Loading...</p>
             ) : classes.length === 0 ? (
-              <p className="text-slate-400 text-center py-8">No classes found. Classes must be created by the school admin first.</p>
+              <p className="text-slate-400 text-center py-8">No classes found.</p>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                 {classes.map((cls) => (
                   <button
                     key={cls.id}
                     onClick={() => handleSelectClass(cls)}
-                    className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg border border-slate-700 hover:border-amber-500 transition-colors text-left group"
+                    className="p-3 bg-slate-800/50 rounded-lg border border-slate-700 hover:border-amber-500 hover:bg-slate-800 transition-colors text-left text-white font-medium text-sm"
                   >
-                    <div>
-                      <p className="text-white font-medium">{cls.name}</p>
-                      <p className="text-slate-400 text-xs mt-1">Click to record payments</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-amber-400 transition-colors" />
+                    {cls.name}
                   </button>
                 ))}
               </div>
@@ -181,10 +183,11 @@ export default function AccountantFeesPage({
     )
   }
 
-  // ── Student Payment Entry View ─────────────────────────────────────────
+  // ── Spreadsheet View ───────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Button
@@ -194,15 +197,24 @@ export default function AccountantFeesPage({
             className="border-slate-700 text-slate-400 hover:text-white hover:border-amber-500"
           >
             <ArrowLeft className="w-4 h-4 mr-1" />
-            Back to Classes
+            Back
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-white">{selectedClass.name}</h1>
-            <p className="text-slate-400 text-sm mt-1">
-              {currentTerm ? `${currentTerm.name} ${currentTerm.year}` : 'No current term'} — Record payments by student
+            <h1 className="text-xl font-bold text-white">{selectedClass.name}</h1>
+            <p className="text-slate-400 text-xs">
+              {currentTerm ? `${currentTerm.name} ${currentTerm.year}` : ''} — {students.length} students
             </p>
           </div>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowPaid(!showPaid)}
+          className={`border-slate-700 text-xs ${showPaid ? 'text-slate-400' : 'text-amber-400 border-amber-500'}`}
+        >
+          <Filter className="w-3 h-3 mr-1" />
+          {showPaid ? 'Show All' : 'Unpaid Only'}
+        </Button>
       </div>
 
       {loading ? (
@@ -212,115 +224,148 @@ export default function AccountantFeesPage({
             <p className="text-slate-400 mt-3">Loading students...</p>
           </CardContent>
         </Card>
-      ) : students.length === 0 ? (
+      ) : filteredStudents.length === 0 ? (
         <Card className="bg-slate-900 border-slate-800">
           <CardContent className="py-12 text-center">
-            <p className="text-slate-400">No active students in this class.</p>
+            <p className="text-slate-400">{showPaid ? 'No active students in this class.' : 'All students are fully paid!'}</p>
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
-          {students.map((student) => {
-            const fee = fees[student.id]
-            const balance = fee ? fee.total_amount - fee.amount_paid : null
-            const payment = payments[student.id] || { amount: '', receiptNumber: '', notes: '' }
-            const error = errors[student.id]
-            const isPaid = fee && balance === 0
-            const hasNoFee = !fee
+        <Card className="bg-slate-900 border-slate-800 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-800/80 border-b border-slate-700">
+                  <th className="text-left py-3 px-3 text-slate-400 font-medium sticky left-0 bg-slate-800/80 z-10 min-w-[180px]">Student</th>
+                  <th className="text-right py-3 px-3 text-slate-400 font-medium w-28">Total</th>
+                  <th className="text-right py-3 px-3 text-slate-400 font-medium w-28">Paid</th>
+                  <th className="text-right py-3 px-3 text-slate-400 font-medium w-28">Balance</th>
+                  <th className="text-right py-3 px-3 text-slate-400 font-medium w-28">Status</th>
+                  <th className="text-right py-3 px-3 text-slate-400 font-medium w-28">Amount</th>
+                  <th className="text-left py-3 px-3 text-slate-400 font-medium w-32">Receipt #</th>
+                  <th className="text-center py-3 px-3 text-slate-400 font-medium w-24">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredStudents.map((student, idx) => {
+                  const fee = fees[student.id]
+                  const balance = fee ? fee.total_amount - fee.amount_paid : null
+                  const input = paymentInputs[student.id] || { amount: '', receiptNumber: '' }
+                  const error = errors[student.id]
+                  const isPaid = fee && balance === 0
+                  const hasNoFee = !fee
+                  const isDimmed = isPaid || hasNoFee
 
-            return (
-              <Card key={student.id} className="bg-slate-900 border-slate-800">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    {/* Student Info */}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-white font-medium truncate">{student.full_name}</p>
-                        {student.student_number && (
-                          <span className="text-slate-500 text-xs">#{student.student_number}</span>
-                        )}
-                        {isPaid && (
-                          <span className="flex items-center text-green-400 text-xs">
-                            <CheckCircle className="w-3 h-3 mr-1" />
+                  return (
+                    <tr
+                      key={student.id}
+                      className={`border-b border-slate-800 transition-colors ${
+                        isDimmed ? 'opacity-50' : 'hover:bg-slate-800/30'
+                      } ${idx % 2 === 0 ? 'bg-slate-900' : 'bg-slate-900/50'}`}
+                    >
+                      {/* Student Name — sticky left */}
+                      <td className="py-2 px-3 sticky left-0 bg-inherit z-10">
+                        <div>
+                          <p className={`font-medium truncate max-w-[160px] ${isDimmed ? 'text-slate-500' : 'text-white'}`}>
+                            {student.full_name}
+                          </p>
+                          {student.student_number && (
+                            <p className="text-slate-600 text-xs">{student.student_number}</p>
+                          )}
+                          {error && <p className="text-red-400 text-xs mt-0.5">{error}</p>}
+                        </div>
+                      </td>
+
+                      {/* Total */}
+                      <td className="py-2 px-3 text-right text-slate-300 font-mono text-xs">
+                        {fee ? fee.total_amount.toLocaleString() : '—'}
+                      </td>
+
+                      {/* Paid */}
+                      <td className="py-2 px-3 text-right text-green-400 font-mono text-xs">
+                        {fee ? fee.amount_paid.toLocaleString() : '—'}
+                      </td>
+
+                      {/* Balance */}
+                      <td className={`py-2 px-3 text-right font-mono text-xs font-semibold ${
+                        balance !== null && balance > 0 ? 'text-red-400' : 'text-slate-600'
+                      }`}>
+                        {balance !== null && balance > 0 ? balance.toLocaleString() : '—'}
+                      </td>
+
+                      {/* Status */}
+                      <td className="py-2 px-3 text-center">
+                        {hasNoFee ? (
+                          <span className="text-slate-600 text-xs">—</span>
+                        ) : isPaid ? (
+                          <span className="inline-flex items-center text-green-400 text-xs">
+                            <CheckCircle className="w-3 h-3 mr-0.5" />
                             Paid
                           </span>
-                        )}
-                        {hasNoFee && (
-                          <span className="flex items-center text-slate-500 text-xs">
-                            No fee record
+                        ) : fee!.amount_paid > 0 ? (
+                          <span className="inline-flex items-center text-amber-400 text-xs">
+                            <AlertTriangle className="w-3 h-3 mr-0.5" />
+                            Partial
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center text-red-400 text-xs">
+                            <AlertTriangle className="w-3 h-3 mr-0.5" />
+                            Unpaid
                           </span>
                         )}
-                      </div>
+                      </td>
 
-                      {fee && (
-                        <div className="mt-1 flex items-center gap-4 text-sm">
-                          <span className="text-slate-400">
-                            Total: <span className="text-white">UGX {fee.total_amount.toLocaleString()}</span>
-                          </span>
-                          <span className="text-slate-400">
-                            Paid: <span className="text-green-400">UGX {fee.amount_paid.toLocaleString()}</span>
-                          </span>
-                          {balance !== null && balance > 0 && (
-                            <span className="text-slate-400">
-                              Balance: <span className="text-red-400 font-medium">UGX {balance.toLocaleString()}</span>
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {error && (
-                        <p className="mt-1 text-red-400 text-xs flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3" />
-                          {error}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Payment Form */}
-                    {fee && balance !== null && balance > 0 && (
-                      <div className="shrink-0 w-72 space-y-2">
-                        <div className="flex items-center gap-2">
+                      {/* Amount Input */}
+                      <td className="py-2 px-3">
+                        {fee && !isPaid ? (
                           <Input
                             type="number"
-                            placeholder="Amount (UGX)"
-                            value={payment.amount}
-                            onChange={(e) => updatePayment(student.id, 'amount', e.target.value)}
-                            className="bg-slate-800 border-slate-700 text-white text-sm h-9"
+                            placeholder={balance!.toLocaleString()}
+                            value={input.amount}
+                            onChange={(e) => updateInput(student.id, 'amount', e.target.value)}
+                            className="bg-slate-800 border-slate-700 text-white text-xs h-7 px-2 font-mono"
                           />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Receipt className="w-4 h-4 text-slate-500 shrink-0" />
+                        ) : (
+                          <span className="text-slate-700 text-xs">—</span>
+                        )}
+                      </td>
+
+                      {/* Receipt # Input */}
+                      <td className="py-2 px-3">
+                        {fee && !isPaid ? (
                           <Input
-                            placeholder="Receipt #"
-                            value={payment.receiptNumber}
-                            onChange={(e) => updatePayment(student.id, 'receiptNumber', e.target.value)}
-                            className="bg-slate-800 border-slate-700 text-white text-sm h-9"
+                            placeholder="RCT-001"
+                            value={input.receiptNumber}
+                            onChange={(e) => updateInput(student.id, 'receiptNumber', e.target.value)}
+                            className="bg-slate-800 border-slate-700 text-white text-xs h-7 px-2"
                           />
-                        </div>
-                        <div>
-                          <Input
-                            placeholder="Notes (optional)"
-                            value={payment.notes}
-                            onChange={(e) => updatePayment(student.id, 'notes', e.target.value)}
-                            className="bg-slate-800 border-slate-700 text-white text-sm h-9"
-                          />
-                        </div>
-                        <Button
-                          size="sm"
-                          onClick={() => handleSubmitPayment(student.id)}
-                          disabled={isPending || !payment.amount || !payment.receiptNumber}
-                          className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs"
-                        >
-                          {isPending ? 'Processing...' : 'Record Payment'}
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
+                        ) : (
+                          <span className="text-slate-700 text-xs">—</span>
+                        )}
+                      </td>
+
+                      {/* Submit Button */}
+                      <td className="py-2 px-3 text-center">
+                        {fee && !isPaid ? (
+                          <Button
+                            size="sm"
+                            onClick={() => handleSubmitPayment(student.id)}
+                            disabled={isPending || !input.amount || !input.receiptNumber}
+                            className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs h-7 px-2 font-semibold disabled:opacity-30"
+                          >
+                            <Send className="w-3 h-3" />
+                          </Button>
+                        ) : (
+                          <span className="text-slate-700 text-xs">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
     </div>
   )
