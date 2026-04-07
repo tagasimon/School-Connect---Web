@@ -4,6 +4,28 @@ import { getCurrentProfile } from '@/lib/firebase/queries'
 import { getSalesReps } from '@/lib/actions/billing'
 import SalesRepsPage from './sales-reps-page'
 
+function serializeTimestamps<T extends Record<string, unknown>>(data: T): T {
+  if (!data) return data
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(data)) {
+    if (value && typeof value === 'object') {
+      const v = value as any
+      if ('_seconds' in v && typeof v._seconds === 'number') {
+        result[key] = new Date(v._seconds * 1000).toISOString()
+      } else if ('seconds' in v && typeof v.seconds === 'number') {
+        result[key] = new Date(v.seconds * 1000).toISOString()
+      } else if (typeof value === 'object') {
+        result[key] = serializeTimestamps(value as Record<string, unknown>)
+      } else {
+        result[key] = value
+      }
+    } else {
+      result[key] = value
+    }
+  }
+  return result as T
+}
+
 export default async function SuperAdminSalesRepsPage() {
   const uid = await getSessionUid()
   if (!uid) redirect('/login')
@@ -12,6 +34,7 @@ export default async function SuperAdminSalesRepsPage() {
   if (!profile) redirect('/login')
 
   const reps = await getSalesReps()
+  const serializedReps = reps.map(r => serializeTimestamps({ id: r.id, ...(r as any) }))
 
-  return <SalesRepsPage salesReps={reps as any} />
+  return <SalesRepsPage salesReps={serializedReps as any} />
 }
