@@ -205,7 +205,14 @@ export default function AccountantFeesPage({
         </div>
       </div>
 
-      {students.length === 0 ? (
+      {loading ? (
+        <Card className="bg-slate-900 border-slate-800">
+          <CardContent className="py-12 text-center">
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-amber-500 border-r-transparent" />
+            <p className="text-slate-400 mt-3">Loading students...</p>
+          </CardContent>
+        </Card>
+      ) : students.length === 0 ? (
         <Card className="bg-slate-900 border-slate-800">
           <CardContent className="py-12 text-center">
             <p className="text-slate-400">No active students in this class.</p>
