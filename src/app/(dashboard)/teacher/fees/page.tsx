@@ -54,16 +54,20 @@ export default async function TeacherFeesPageRoute() {
 
   const classData = { id: classSnap.docs[0].id, ...(classSnap.docs[0].data() as any) }
 
-  // Get students in this class
+  // Get students in this class (avoid compound index by filtering in JS)
   const studentsSnap = await adminDb()
     .collection('students')
     .where('school_id', '==', profile.school_id)
     .where('class_id', '==', classData.id)
-    .where('status', '==', 'active')
-    .orderBy('full_name')
     .get()
 
-  const students = studentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+  const students = studentsSnap.docs
+    .filter(d => (d.data().status as string) === 'active')
+    .map(doc => ({
+      id: doc.id,
+      full_name: doc.data().full_name as string,
+      student_number: doc.data().student_number as string | null,
+    }))
 
   // Get fee records for these students
   const studentIds = students.map(s => s.id)

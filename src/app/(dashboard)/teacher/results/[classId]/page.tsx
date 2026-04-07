@@ -26,8 +26,6 @@ export default async function ResultsClassPage({
     adminDb()
       .collection('students')
       .where('class_id', '==', classId)
-      .where('status', '==', 'active')
-      .orderBy('full_name')
       .get(),
   ])
 
@@ -35,11 +33,13 @@ export default async function ResultsClassPage({
     redirect('/teacher')
   }
 
-  const students = studentsSnap.docs.map(doc => ({
-    id: doc.id,
-    full_name: doc.data().full_name,
-    student_number: doc.data().student_number,
-  }))
+  const students = studentsSnap.docs
+    .filter(d => (d.data().status as string) === 'active')
+    .map(doc => ({
+      id: doc.id,
+      full_name: doc.data().full_name as string,
+      student_number: doc.data().student_number as string | null,
+    }))
 
   return (
     <ResultsForm
