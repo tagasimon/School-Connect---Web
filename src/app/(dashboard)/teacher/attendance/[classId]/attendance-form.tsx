@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { markAttendance } from '@/lib/actions/attendance'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ArrowLeft, Check, X } from 'lucide-react'
+import { ArrowLeft, Check, X, AlertCircle, CheckCircle } from 'lucide-react'
 import Link from 'next/link'
 
 interface Student {
@@ -29,16 +29,25 @@ export default function AttendancePage({
     () => Object.fromEntries(students.map(s => [s.id, 'present']))
   )
   const [notes, setNotes] = useState<Record<string, string>>({})
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
 
   const handleSubmit = () => {
+    setError(null)
+    setSuccess(false)
     startTransition(async () => {
       const data = students.map(student => ({
         studentId: student.id,
         status: attendance[student.id],
         notes: attendance[student.id] === 'absent' ? (notes[student.id] || 'No reason given') : undefined,
       }))
-      await markAttendance(params.classId, data)
-      router.push('/teacher')
+      const result = await markAttendance(params.classId, data)
+      if (result.success) {
+        setSuccess(true)
+        setTimeout(() => router.push('/teacher'), 1500)
+      } else {
+        setError(result.error || 'Failed to save attendance')
+      }
     })
   }
 
@@ -59,6 +68,24 @@ export default function AttendancePage({
           </p>
         </div>
       </div>
+
+      {error && (
+        <Card className="bg-slate-900 border-red-500/30">
+          <CardContent className="py-4 flex items-center gap-2 text-red-400">
+            <AlertCircle className="w-5 h-5 shrink-0" />
+            <span>{error}</span>
+          </CardContent>
+        </Card>
+      )}
+
+      {success && (
+        <Card className="bg-slate-900 border-green-500/30">
+          <CardContent className="py-4 flex items-center gap-2 text-green-400">
+            <CheckCircle className="w-5 h-5 shrink-0" />
+            <span>Attendance saved successfully! Redirecting...</span>
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="bg-slate-900 border-slate-800">
         <CardHeader>
@@ -92,8 +119,8 @@ export default function AttendancePage({
                     variant={attendance[student.id] === 'present' ? 'default' : 'outline'}
                     size="sm"
                     onClick={() => setAttendance(prev => ({ ...prev, [student.id]: 'present' }))}
-                    className={attendance[student.id] === 'present' 
-                      ? 'bg-green-600 hover:bg-green-700 text-white' 
+                    className={attendance[student.id] === 'present'
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
                       : 'border-slate-700 text-slate-400'}
                   >
                     <Check className="w-4 h-4" />
@@ -102,8 +129,8 @@ export default function AttendancePage({
                     variant={attendance[student.id] === 'absent' ? 'default' : 'outline'}
                     size="sm"
                     onClick={() => setAttendance(prev => ({ ...prev, [student.id]: 'absent' }))}
-                    className={attendance[student.id] === 'absent' 
-                      ? 'bg-amber-600 hover:bg-amber-700 text-white' 
+                    className={attendance[student.id] === 'absent'
+                      ? 'bg-amber-600 hover:bg-amber-700 text-white'
                       : 'border-slate-700 text-slate-400'}
                   >
                     <X className="w-4 h-4" />
