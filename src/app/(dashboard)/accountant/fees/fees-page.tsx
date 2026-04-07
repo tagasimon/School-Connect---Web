@@ -250,7 +250,9 @@ export default function AccountantFeesPage({
                 {filteredStudents.map((student, idx) => {
                   const fee = fees[student.id]
                   const balance = fee ? fee.total_amount - fee.amount_paid : null
-                  const input = paymentInputs[student.id] || { amount: '', receiptNumber: '' }
+                  const input = paymentInputs[student.id]
+                  const amountValue = input?.amount ?? ''
+                  const receiptValue = input?.receiptNumber ?? ''
                   const error = errors[student.id]
                   const isPaid = fee && balance === 0
                   const hasNoFee = !fee
@@ -321,7 +323,7 @@ export default function AccountantFeesPage({
                           <Input
                             type="number"
                             placeholder={balance!.toLocaleString()}
-                            value={input.amount}
+                            value={amountValue}
                             onChange={(e) => updateInput(student.id, 'amount', e.target.value)}
                             className="bg-slate-800 border-slate-700 text-white text-xs h-7 px-2 font-mono"
                           />
@@ -335,7 +337,7 @@ export default function AccountantFeesPage({
                         {fee && !isPaid ? (
                           <Input
                             placeholder="RCT-001"
-                            value={input.receiptNumber}
+                            value={receiptValue}
                             onChange={(e) => updateInput(student.id, 'receiptNumber', e.target.value)}
                             className="bg-slate-800 border-slate-700 text-white text-xs h-7 px-2"
                           />
@@ -350,7 +352,7 @@ export default function AccountantFeesPage({
                           <Button
                             size="sm"
                             onClick={() => handleSubmitPayment(student.id)}
-                            disabled={isPending || !input.amount || !input.receiptNumber}
+                            disabled={isPending || !amountValue || !receiptValue}
                             className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs h-7 px-2 font-semibold disabled:opacity-30"
                           >
                             <Send className="w-3 h-3" />
