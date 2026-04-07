@@ -202,16 +202,21 @@ export async function getFeesWithStudents(schoolId: string) {
 }
 
 export async function getFeesByClass(schoolId: string, classId: string) {
-  // Get students in class
+  // Get students in class (filter status in JS to avoid composite index requirement)
   const studentsSnap = await adminDb()
     .collection('students')
     .where('school_id', '==', schoolId)
     .where('class_id', '==', classId)
-    .where('status', '==', 'active')
-    .orderBy('full_name')
     .get()
 
-  const students = studentsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+  const students = studentsSnap.docs
+    .filter(d => (d.data().status as string) === 'active')
+    .sort((a, b) => {
+      const nameA = (a.data().full_name as string) || ''
+      const nameB = (b.data().full_name as string) || ''
+      return nameA.localeCompare(nameB)
+    })
+    .map(d => serializeTimestamps({ id: d.id, ...d.data() } as any))
 
   // Get current term
   const termSnap = await adminDb()
@@ -221,7 +226,7 @@ export async function getFeesByClass(schoolId: string, classId: string) {
     .limit(1)
     .get()
 
-  const currentTerm = termSnap.empty ? null : { id: termSnap.docs[0].id, ...termSnap.docs[0].data() }
+  const currentTerm = termSnap.empty ? null : serializeTimestamps({ id: termSnap.docs[0].id, ...termSnap.docs[0].data() } as any)
 
   // Get fee records for these students
   const fees: Record<string, any> = {}
