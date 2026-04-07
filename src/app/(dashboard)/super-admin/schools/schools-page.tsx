@@ -199,6 +199,15 @@ export default function SuperAdminSchoolsPage({
                       )}
                     </div>
                     <div className="flex items-center gap-2">
+                      <Link href={`/super-admin/schools/${school.id}/billing`}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-slate-700 text-slate-400 hover:text-white hover:border-amber-500"
+                        >
+                          Billing
+                        </Button>
+                      </Link>
                       <Link href={`/super-admin/schools/${school.id}/manage`}>
                         <Button
                           variant="outline"

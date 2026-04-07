@@ -343,7 +343,36 @@ async function seedResults() {
   console.log(`    → ${count} result records`)
 }
 
-// ── 10. Fees ──────────────────────────────────────────────────────────────────
+// ── 10. Fee Structures ────────────────────────────────────────────────────────
+
+async function seedFeeStructures() {
+  console.log('\n── Fee Structures')
+  const adminUid = uids['admin@stjohns.ug']
+
+  const structures = [
+    { classId: CLASS_IDS.P3A, className: 'P3A', amount: 450000 },
+    { classId: CLASS_IDS.P4B, className: 'P4B', amount: 500000 },
+    { classId: CLASS_IDS.P5C, className: 'P5C', amount: 550000 },
+  ]
+
+  for (const s of structures) {
+    const ref = db.collection('fee_structures').doc()
+    await ref.set({
+      school_id: SCHOOL_ID,
+      class_id: s.classId,
+      term_id: TERM_ID,
+      amount: s.amount,
+      payment_deadline: '2026-06-15',
+      notes: `Standard fees for ${s.className} Term 2 2026`,
+      created_by: adminUid,
+      created_at: now(),
+      updated_at: now(),
+    })
+    console.log(`    → fee structure ${s.className}: UGX ${s.amount.toLocaleString()}`)
+  }
+}
+
+// ── 11. Fees ──────────────────────────────────────────────────────────────────
 
 async function seedFees() {
   console.log('\n── Fees')
@@ -372,7 +401,61 @@ async function seedFees() {
   console.log(`    → ${count} fee records`)
 }
 
-// ── 11. Announcements ─────────────────────────────────────────────────────────
+// ── 12. Payments ──────────────────────────────────────────────────────────────
+
+async function seedPayments() {
+  console.log('\n── Payments')
+  const accountantUid = uids['accountant@stjohns.ug']
+  let count = 0
+
+  // Get all fee records
+  const feesSnap = await db.collection('fees').where('school_id', '==', SCHOOL_ID).get()
+
+  for (const feeDoc of feesSnap.docs) {
+    const feeData = feeDoc.data()
+    const amountPaid = feeData.amount_paid as number
+
+    if (amountPaid === 0) continue  // No payments for unpaid fees
+
+    if (amountPaid >= (feeData.total_amount as number)) {
+      // Full payment — single receipt
+      const ref = db.collection('payments').doc()
+      await ref.set({
+        fee_id: feeDoc.id,
+        student_id: feeData.student_id,
+        school_id: SCHOOL_ID,
+        amount: amountPaid,
+        receipt_number: `RCT-2026-${String(count + 1).padStart(4, '0')}`,
+        payment_date: '2026-05-10',
+        notes: 'Full payment',
+        created_by: accountantUid,
+        created_at: now(),
+      })
+      count++
+    } else {
+      // Partial payment — split into 2 receipts
+      const half = Math.floor(amountPaid / 2)
+      for (let j = 0; j < 2; j++) {
+        const ref = db.collection('payments').doc()
+        await ref.set({
+          fee_id: feeDoc.id,
+          student_id: feeData.student_id,
+          school_id: SCHOOL_ID,
+          amount: j === 0 ? half : amountPaid - half,
+          receipt_number: `RCT-2026-${String(count + 1).padStart(4, '0')}`,
+          payment_date: j === 0 ? '2026-05-10' : '2026-05-25',
+          notes: j === 0 ? 'First installment' : 'Second installment',
+          created_by: accountantUid,
+          created_at: now(),
+        })
+        count++
+      }
+    }
+  }
+  console.log(`    → ${count} payment records`)
+}
+
+// ── 13. Announcements ─────────────────────────────────────────────────────────
 
 async function seedAnnouncements() {
   console.log('\n── Announcements')
@@ -455,7 +538,9 @@ async function main() {
   await seedParentStudents()
   await seedAttendance()
   await seedResults()
+  await seedFeeStructures()
   await seedFees()
+  await seedPayments()
   await seedAnnouncements()
   await seedSmsLogs()
 

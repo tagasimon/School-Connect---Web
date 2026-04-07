@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { getSessionUid } from '@/lib/firebase/session'
 import { getCurrentProfile } from '@/lib/firebase/queries'
 import { adminDb } from '@/lib/firebase/admin'
-import StudentsPage from './students-page'
+import FeeStructuresPage from './fee-structures-page'
 
 function serializeTimestamps<T extends Record<string, unknown>>(data: T): T {
   if (!data) return data
@@ -26,49 +26,63 @@ function serializeTimestamps<T extends Record<string, unknown>>(data: T): T {
   return result as T
 }
 
-export default async function SchoolAdminStudentsPage() {
+export default async function SchoolAdminFeeStructuresPage() {
   const uid = await getSessionUid()
   if (!uid) redirect('/login')
 
   const profile = await getCurrentProfile(uid)
   if (!profile?.school_id) redirect('/login')
 
-  const [classesSnap, studentsSnap] = await Promise.all([
+  const [classesSnap, termsSnap, feeStructuresSnap] = await Promise.all([
     adminDb()
       .collection('classes')
       .where('school_id', '==', profile.school_id)
       .get(),
     adminDb()
-      .collection('students')
+      .collection('terms')
+      .where('school_id', '==', profile.school_id)
+      .orderBy('year', 'desc')
+      .get(),
+    adminDb()
+      .collection('fee_structures')
       .where('school_id', '==', profile.school_id)
       .get(),
   ])
 
   const classes = classesSnap.docs.map(doc => ({
     id: doc.id,
-    name: (doc.data() as any).name as string,
+    ...serializeTimestamps(doc.data() as Record<string, unknown>),
   }))
 
-  const allStudents = studentsSnap.docs.map(doc => ({
+  const terms = termsSnap.docs.map(doc => ({
     id: doc.id,
-    class_id: (doc.data() as any).class_id as string,
-    full_name: (doc.data() as any).full_name as string,
-    student_number: (doc.data() as any).student_number as string | null,
-    gender: (doc.data() as any).gender as string | null,
-    status: (doc.data() as any).status as string,
+    ...serializeTimestamps(doc.data() as Record<string, unknown>),
   }))
 
-  const studentsByClass: Record<string, number> = {}
-  classes.forEach(c => {
-    studentsByClass[c.id] = allStudents.filter(s => s.class_id === c.id && s.status === 'active').length
-  })
+  // Enrich fee structures with class and term data
+  const feeStructures = await Promise.all(
+    feeStructuresSnap.docs.map(async (doc) => {
+      const data = doc.data()
+      const [classDoc, termDoc] = await Promise.all([
+        adminDb().collection('classes').doc(data.class_id).get(),
+        adminDb().collection('terms').doc(data.term_id).get(),
+      ])
+
+      return {
+        id: doc.id,
+        ...serializeTimestamps(data as Record<string, unknown>),
+        className: classDoc.exists ? ((classDoc.data() as any).name as string) : 'Unknown',
+        termName: termDoc.exists ? `${(termDoc.data() as any).name} ${(termDoc.data() as any).year}` : 'Unknown',
+      }
+    })
+  )
 
   return (
-    <StudentsPage
+    <FeeStructuresPage
       schoolId={profile.school_id}
-      classes={classes}
-      studentsByClass={studentsByClass}
-      totalStudents={allStudents.filter(s => s.status === 'active').length}
+      classes={classes as any}
+      terms={terms as any}
+      feeStructures={feeStructures as any}
     />
   )
 }

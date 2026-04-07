@@ -31,7 +31,7 @@ export async function createAnnouncement(
   data: {
     title: string
     body: string
-    target: 'school' | 'class'
+    target: 'school' | 'class' | 'parent' | 'teacher'
     classId?: string | null
     smsSent: boolean
   }

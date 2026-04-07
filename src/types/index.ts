@@ -2,6 +2,7 @@ export type UserRole = 'super_admin' | 'school_admin' | 'teacher' | 'accountant'
 export type SubscriptionStatus = 'active' | 'inactive' | 'trial'
 export type AttendanceStatus = 'present' | 'absent'
 export type SmsStatus = 'pending' | 'sent' | 'failed'
+export type ContractStatus = 'draft' | 'active' | 'expired' | 'cancelled'
 
 export interface SchoolDoc {
   id: string
@@ -128,15 +129,60 @@ export interface FeeDoc {
   updated_at: string
 }
 
+export interface FeeStructureDoc {
+  id: string
+  school_id: string
+  class_id: string
+  term_id: string
+  amount: number
+  payment_deadline: string | null  // ISO date string
+  notes: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface PaymentDoc {
+  id: string
+  fee_id: string
+  student_id: string
+  school_id: string
+  amount: number
+  receipt_number: string
+  payment_date: string  // ISO date string
+  notes: string | null
+  created_by: string
+  created_at: string
+}
+
 export interface AnnouncementDoc {
   id: string
   school_id: string
   class_id: string | null
   title: string
   body: string
-  target: 'school' | 'class'
+  target: 'school' | 'class' | 'parent' | 'teacher'
   sms_sent: boolean
   created_by: string
+  created_at: string
+}
+
+export interface CommitmentTypeDoc {
+  id: string
+  school_id: string
+  name: string
+  default_amount: number
+  is_active: boolean
+  created_at: string
+}
+
+export interface StudentCommitmentDoc {
+  id: string
+  student_id: string
+  school_id: string
+  commitment_type_id: string | null
+  name: string
+  amount: number
   created_at: string
 }
 
@@ -148,5 +194,45 @@ export interface SmsLogDoc {
   status: SmsStatus
   provider_ref: string | null
   error: string | null
+  created_at: string
+}
+
+export interface SalesRepDoc {
+  id: string
+  full_name: string
+  email: string | null
+  phone: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface SchoolContractDoc {
+  id: string
+  school_id: string
+  agreed_amount: number
+  status: ContractStatus
+  contract_person_name: string | null
+  contract_person_phone: string | null
+  contract_person_email: string | null
+  contract_person_role: string | null
+  sales_rep_id: string | null
+  start_date: string | null
+  end_date: string | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ContractPaymentDoc {
+  id: string
+  contract_id: string
+  school_id: string
+  amount: number
+  payment_date: string
+  reference: string | null
+  notes: string | null
+  recorded_by: string | null
   created_at: string
 }

@@ -23,7 +23,7 @@ export default function AnnouncementsPage({
     id: string
     title: string
     body: string
-    target: 'school' | 'class'
+    target: 'school' | 'class' | 'parent' | 'teacher'
     sms_sent: boolean
     created_at: { _seconds: number; _nanoseconds: number }
     class_id?: string | null
@@ -35,7 +35,7 @@ export default function AnnouncementsPage({
   const [showForm, setShowForm] = useState(false)
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
-  const [target, setTarget] = useState<'school' | 'class'>('school')
+  const [target, setTarget] = useState<'school' | 'class' | 'parent' | 'teacher'>('school')
   const [selectedClass, setSelectedClass] = useState('')
   const [smsEnabled, setSmsEnabled] = useState(false)
 
@@ -118,25 +118,31 @@ export default function AnnouncementsPage({
 
             <div className="space-y-2">
               <label className="text-sm text-slate-300">Audience</label>
-              <div className="flex gap-4">
-                <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
-                  <input
-                    type="radio"
-                    checked={target === 'school'}
-                    onChange={() => setTarget('school')}
-                    className="text-amber-500 focus:ring-amber-500"
-                  />
-                  Entire School
-                </label>
-                <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
-                  <input
-                    type="radio"
-                    checked={target === 'class'}
-                    onChange={() => setTarget('class')}
-                    className="text-amber-500 focus:ring-amber-500"
-                  />
-                  Specific Class
-                </label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { value: 'school' as const, label: 'Entire School' },
+                  { value: 'class' as const, label: 'Specific Class' },
+                  { value: 'parent' as const, label: 'All Parents' },
+                  { value: 'teacher' as const, label: 'All Teachers' },
+                ].map(opt => (
+                  <label
+                    key={opt.value}
+                    className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-sm transition-colors ${
+                      target === opt.value
+                        ? 'border-amber-500 bg-amber-500/10 text-amber-400'
+                        : 'border-slate-700 text-slate-300 hover:border-slate-600'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="target"
+                      checked={target === opt.value}
+                      onChange={() => setTarget(opt.value)}
+                      className="text-amber-500 focus:ring-amber-500"
+                    />
+                    {opt.label}
+                  </label>
+                ))}
               </div>
 
               {target === 'class' && (
@@ -218,10 +224,20 @@ export default function AnnouncementsPage({
                     className={`px-2 py-0.5 rounded text-xs ${
                       announcement.target === 'school'
                         ? 'bg-blue-500/20 text-blue-400'
-                        : 'bg-purple-500/20 text-purple-400'
+                        : announcement.target === 'class'
+                          ? 'bg-purple-500/20 text-purple-400'
+                          : announcement.target === 'parent'
+                            ? 'bg-green-500/20 text-green-400'
+                            : 'bg-amber-500/20 text-amber-400'
                     }`}
                   >
-                    {announcement.target === 'school' ? 'School-wide' : 'Specific Class'}
+                    {announcement.target === 'school'
+                      ? 'School-wide'
+                      : announcement.target === 'class'
+                        ? 'Specific Class'
+                        : announcement.target === 'parent'
+                          ? 'All Parents'
+                          : 'All Teachers'}
                   </span>
                   {announcement.sms_sent && (
                     <span className="px-2 py-0.5 rounded text-xs bg-amber-500/20 text-amber-400 flex items-center gap-1">

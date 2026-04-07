@@ -15,12 +15,16 @@ import {
   BarChart3,
   Settings,
   GraduationCap,
+  Wallet,
 } from 'lucide-react'
 
 const NAV_BY_ROLE: Record<UserRole, { href: string; label: string; icon: React.ElementType }[]> = {
   super_admin: [
     { href: '/super-admin', label: 'Overview', icon: LayoutDashboard },
     { href: '/super-admin/schools', label: 'Schools', icon: School },
+    { href: '/super-admin/billing', label: 'Billing', icon: DollarSign },
+    { href: '/super-admin/sales-reps', label: 'Sales Reps', icon: Users },
+    { href: '/super-admin/reports', label: 'Reports', icon: BarChart3 },
     { href: '/super-admin/analytics', label: 'Analytics', icon: BarChart3 },
   ],
   school_admin: [
@@ -28,13 +32,16 @@ const NAV_BY_ROLE: Record<UserRole, { href: string; label: string; icon: React.E
     { href: '/school-admin/students', label: 'Students', icon: GraduationCap },
     { href: '/school-admin/teachers', label: 'Teachers', icon: Users },
     { href: '/school-admin/classes', label: 'Classes', icon: BookOpen },
+    { href: '/school-admin/fee-structures', label: 'Fee Structures', icon: Wallet },
     { href: '/school-admin/announcements', label: 'Announcements', icon: Megaphone },
+    { href: '/school-admin/reports', label: 'Reports', icon: BarChart3 },
     { href: '/school-admin/settings', label: 'Settings', icon: Settings },
   ],
   teacher: [
     { href: '/teacher', label: 'Overview', icon: LayoutDashboard },
     { href: '/teacher/attendance', label: 'Attendance', icon: ClipboardList },
     { href: '/teacher/results', label: 'Results', icon: BookOpen },
+    { href: '/teacher/fees', label: 'Class Fees', icon: DollarSign },
     { href: '/teacher/announcements', label: 'Announcements', icon: Megaphone },
   ],
   accountant: [
