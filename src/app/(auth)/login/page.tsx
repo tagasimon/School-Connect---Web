@@ -5,7 +5,23 @@ import { login, type LoginState } from '@/lib/actions/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Shield, Users, GraduationCap, Wallet, Smartphone } from 'lucide-react'
+
+const ROLE_OPTIONS = [
+  { value: 'super_admin', label: 'Super Admin', icon: Shield },
+  { value: 'school_admin', label: 'School Admin', icon: Users },
+  { value: 'teacher', label: 'Teacher', icon: GraduationCap },
+  { value: 'accountant', label: 'Accountant', icon: Wallet },
+  { value: 'parent', label: 'Parent', icon: Smartphone },
+] as const
 
 export default function LoginPage() {
   const [state, action, pending] = useActionState<LoginState, FormData>(login, null)
@@ -26,7 +42,7 @@ export default function LoginPage() {
           <CardHeader className="pb-4">
             <CardTitle className="text-white text-lg">Sign in</CardTitle>
             <CardDescription className="text-slate-400">
-              Enter your school email and password
+              Select your role and enter credentials
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -36,6 +52,28 @@ export default function LoginPage() {
                   {state.error}
                 </div>
               )}
+
+              <div className="space-y-2">
+                <Label htmlFor="role" className="text-slate-300">Role</Label>
+                <Select name="role" defaultValue="school_admin">
+                  <SelectTrigger className="bg-slate-800 border-slate-700 text-white focus:border-amber-500">
+                    <SelectValue placeholder="Select your role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ROLE_OPTIONS.map((role) => {
+                      const Icon = role.icon
+                      return (
+                        <SelectItem key={role.value} value={role.value}>
+                          <div className="flex items-center gap-2">
+                            <Icon className="h-4 w-4" />
+                            {role.label}
+                          </div>
+                        </SelectItem>
+                      )
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
 
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-slate-300">Email</Label>

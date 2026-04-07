@@ -7,12 +7,27 @@ import { redirect } from 'next/navigation'
 
 export type LoginState = { error: string } | null
 
+export type LoginRole =
+  | 'super_admin'
+  | 'school_admin'
+  | 'teacher'
+  | 'accountant'
+  | 'parent'
+
 const ROLE_REDIRECTS: Record<string, string> = {
   super_admin: '/super-admin',
   school_admin: '/school-admin',
   teacher: '/teacher',
   accountant: '/accountant',
-  parent: '/parent', // Parents use mobile app only, but we'll show a message page
+  parent: '/parent',
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  super_admin: 'Super Admin',
+  school_admin: 'School Admin',
+  teacher: 'Teacher',
+  accountant: 'Accountant',
+  parent: 'Parent',
 }
 
 // 5 days in milliseconds
@@ -24,6 +39,11 @@ export async function login(
 ): Promise<LoginState> {
   const email = formData.get('email') as string
   const password = formData.get('password') as string
+  const selectedRole = formData.get('role') as LoginRole
+
+  if (!selectedRole || !ROLE_REDIRECTS[selectedRole]) {
+    return { error: 'Invalid role selected' }
+  }
 
   // Sign in via Firebase Auth REST API (server-side, no client SDK needed)
   const res = await fetch(
@@ -62,9 +82,21 @@ export async function login(
   })
 
   const profile = await getCurrentProfile(uid)
-  const destination = profile?.role
-    ? (ROLE_REDIRECTS[profile.role] ?? '/school-admin')
-    : '/school-admin'
+
+  if (!profile) {
+    cookieStore.delete('session')
+    return { error: 'Account not found. Contact your administrator.' }
+  }
+
+  // Validate selected role matches actual role
+  if (profile.role !== selectedRole) {
+    cookieStore.delete('session')
+    return {
+      error: `This account is registered as ${ROLE_LABELS[profile.role]}, not ${ROLE_LABELS[selectedRole]}. Please select the correct role.`,
+    }
+  }
+
+  const destination = ROLE_REDIRECTS[profile.role] ?? '/school-admin'
   redirect(destination)
 }
 
