@@ -29,6 +29,7 @@ function init() {
 init()
 
 const db = getFirestore()
+db.settings({ preferRest: true })   // bypass gRPC on Node 22
 const auth = getAuth()
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
