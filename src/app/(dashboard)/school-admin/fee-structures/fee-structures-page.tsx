@@ -1,12 +1,12 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { createFeeStructure, autoGenerateFeeRecords } from '@/lib/actions/fees'
+import { createFeeStructure } from '@/lib/actions/fees'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Plus, DollarSign, Users, CheckCircle, AlertCircle } from 'lucide-react'
+import { Plus, DollarSign } from 'lucide-react'
 
 interface ClassDoc {
   id: string
@@ -48,11 +48,14 @@ export default function FeeStructuresPage({
   const [amount, setAmount] = useState('')
   const [deadline, setDeadline] = useState('')
   const [notes, setNotes] = useState('')
-  const [generatingId, setGeneratingId] = useState<string | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [successMsg, setSuccessMsg] = useState<string | null>(null)
 
   const handleCreate = () => {
     if (!selectedClass || !selectedTerm || !amount) return
 
+    setFormError(null)
+    setSuccessMsg(null)
     startTransition(async () => {
       const result = await createFeeStructure(schoolId, {
         classId: selectedClass,
@@ -62,23 +65,15 @@ export default function FeeStructuresPage({
         notes: notes || undefined,
       })
 
-      if (result.success) {
+      if (result.error) {
+        setFormError(result.error)
+      } else {
+        setSuccessMsg(`Created! ${result.created} fee records generated, ${result.skipped} already existed.`)
         setShowForm(false)
         setSelectedClass('')
         setAmount('')
         setDeadline('')
         setNotes('')
-        router.refresh()
-      }
-    })
-  }
-
-  const handleGenerate = (structureId: string) => {
-    setGeneratingId(structureId)
-    startTransition(async () => {
-      const result = await autoGenerateFeeRecords(schoolId, structureId)
-      if (result.success) {
-        setGeneratingId(null)
         router.refresh()
       }
     })
@@ -192,8 +187,14 @@ export default function FeeStructuresPage({
                 {isPending ? 'Creating...' : 'Create & Generate Fee Records'}
               </Button>
             </div>
+
+            {formError && <p className="text-red-400 text-sm">{formError}</p>}
           </CardContent>
         </Card>
+      )}
+
+      {successMsg && (
+        <p className="text-green-400 text-sm px-1">{successMsg}</p>
       )}
 
       <Card className="bg-slate-900 border-slate-800">
@@ -225,33 +226,15 @@ export default function FeeStructuresPage({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-6">
-                    <div className="text-right">
-                      <p className="text-white font-semibold">UGX {parseInt(fs.amount as any).toLocaleString()}</p>
-                      {fs.payment_deadline ? (
-                        <p className="text-slate-400 text-xs">
-                          Deadline: {new Date(fs.payment_deadline as string).toLocaleDateString()}
-                        </p>
-                      ) : (
-                        <p className="text-slate-500 text-xs">No deadline set</p>
-                      )}
-                    </div>
-
-                    <Button
-                      size="sm"
-                      onClick={() => handleGenerate(fs.id)}
-                      disabled={generatingId === fs.id}
-                      className="bg-green-600 hover:bg-green-700 text-white text-xs"
-                    >
-                      {generatingId === fs.id ? (
-                        'Generating...'
-                      ) : (
-                        <>
-                          <Users className="w-3 h-3 mr-1" />
-                          Generate for Students
-                        </>
-                      )}
-                    </Button>
+                  <div className="text-right">
+                    <p className="text-white font-semibold">UGX {parseInt(fs.amount as any).toLocaleString()}</p>
+                    {fs.payment_deadline ? (
+                      <p className="text-slate-400 text-xs">
+                        Deadline: {new Date(fs.payment_deadline as string).toLocaleDateString()}
+                      </p>
+                    ) : (
+                      <p className="text-slate-500 text-xs">No deadline set</p>
+                    )}
                   </div>
                 </div>
               ))}

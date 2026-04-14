@@ -13,14 +13,15 @@ function serializeTimestamps<T extends Record<string, unknown>>(data: T): T {
   for (const [key, value] of Object.entries(data)) {
     if (value && typeof value === 'object') {
       const v = value as any
-      if ('_seconds' in v && typeof v._seconds === 'number') {
+      // toDate() is present on all Firestore Timestamp instances across SDK versions
+      if (typeof v.toDate === 'function') {
+        result[key] = (v.toDate() as Date).toISOString()
+      } else if ('_seconds' in v && typeof v._seconds === 'number') {
         result[key] = new Date(v._seconds * 1000).toISOString()
       } else if ('seconds' in v && typeof v.seconds === 'number') {
         result[key] = new Date(v.seconds * 1000).toISOString()
-      } else if (typeof value === 'object') {
-        result[key] = serializeTimestamps(value as Record<string, unknown>)
       } else {
-        result[key] = value
+        result[key] = serializeTimestamps(value as Record<string, unknown>)
       }
     } else {
       result[key] = value
@@ -88,7 +89,7 @@ export async function getSalesReps() {
     .orderBy('full_name')
     .get()
 
-  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+  return snap.docs.map(doc => serializeTimestamps({ id: doc.id, ...doc.data() } as Record<string, unknown>))
 }
 
 // ── School Contracts ───────────────────────────────────────────────────────
@@ -153,7 +154,7 @@ export async function getSchoolContract(schoolId: string) {
 
   if (snap.empty) return null
   const doc = snap.docs[0]
-  return { id: doc.id, ...doc.data() }
+  return serializeTimestamps({ id: doc.id, ...doc.data() } as Record<string, unknown>)
 }
 
 export async function getAllSchoolContracts() {
@@ -162,7 +163,7 @@ export async function getAllSchoolContracts() {
     .orderBy('created_at', 'desc')
     .get()
 
-  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+  return snap.docs.map(doc => serializeTimestamps({ id: doc.id, ...doc.data() } as Record<string, unknown>))
 }
 
 // ── Contract Payments ──────────────────────────────────────────────────────
@@ -226,7 +227,7 @@ export async function getContractPayments(contractId: string) {
     .orderBy('payment_date', 'desc')
     .get()
 
-  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+  return snap.docs.map(doc => serializeTimestamps({ id: doc.id, ...doc.data() } as Record<string, unknown>))
 }
 
 export async function getAllContractPayments() {
@@ -235,7 +236,7 @@ export async function getAllContractPayments() {
     .orderBy('payment_date', 'desc')
     .get()
 
-  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+  return snap.docs.map(doc => serializeTimestamps({ id: doc.id, ...doc.data() } as Record<string, unknown>))
 }
 
 // ── Billing Overview ───────────────────────────────────────────────────────
@@ -262,7 +263,7 @@ export async function getBillingOverview() {
     // Get payments for this contract
     const contractPayments = paymentsSnap.docs
       .filter(d => (d.data().contract_id as string) === doc.id)
-      .map(d => ({ id: d.id, ...(d.data() as any) }))
+      .map(d => serializeTimestamps({ id: d.id, ...d.data() } as Record<string, unknown>))
 
     const totalPaid = contractPayments.reduce((sum, p) => sum + ((p as any).amount as number), 0)
     const pending = agreedAmount - totalPaid

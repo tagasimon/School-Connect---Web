@@ -46,7 +46,7 @@ export default async function SchoolBillingPageWrapper({
   ])
 
   const schoolName = schoolDoc.exists ? ((schoolDoc.data() as any).name as string) : 'Unknown School'
-  const salesReps = salesRepsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+  const salesReps = salesRepsSnap.docs.map(doc => serializeTimestamps({ id: doc.id, ...doc.data() } as Record<string, unknown>))
 
   // Get contract and payments separately since contract may not exist
   const contract = await getSchoolContract(schoolId)

@@ -5,6 +5,7 @@ import { adminDb } from '@/lib/firebase/admin'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Users, Plus, Mail, Phone } from 'lucide-react'
+import Link from 'next/link'
 
 export default async function SchoolAdminTeachersPage() {
   const uid = await getSessionUid()
@@ -46,9 +47,11 @@ export default async function SchoolAdminTeachersPage() {
           <h1 className="text-2xl font-bold text-white">Teachers</h1>
           <p className="text-slate-400 text-sm mt-1">Manage teaching staff</p>
         </div>
-        <Button className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
-          <Plus className="w-4 h-4 mr-2" />
-          Add Teacher
+        <Button asChild className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
+          <Link href="/school-admin/teachers/add">
+            <Plus className="w-4 h-4 mr-2" />
+            Add Teacher
+          </Link>
         </Button>
       </div>
 

@@ -5,6 +5,7 @@ import { adminDb } from '@/lib/firebase/admin'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Plus, BookOpen, Users } from 'lucide-react'
+import Link from 'next/link'
 
 export default async function SchoolAdminClassesPage() {
   const uid = await getSessionUid()
@@ -54,9 +55,11 @@ export default async function SchoolAdminClassesPage() {
           <h1 className="text-2xl font-bold text-white">Classes</h1>
           <p className="text-slate-400 text-sm mt-1">Manage class assignments</p>
         </div>
-        <Button className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
-          <Plus className="w-4 h-4 mr-2" />
-          Create Class
+        <Button asChild className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
+          <Link href="/school-admin/classes/create">
+            <Plus className="w-4 h-4 mr-2" />
+            Create Class
+          </Link>
         </Button>
       </div>
 
@@ -117,8 +120,10 @@ export default async function SchoolAdminClassesPage() {
                       </div>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm" className="border-slate-700 text-slate-400">
-                    Manage
+                  <Button asChild variant="outline" size="sm" className="border-slate-700 text-slate-400">
+                    <Link href={`/school-admin/classes/${cls.id}`}>
+                      Manage
+                    </Link>
                   </Button>
                 </div>
               ))

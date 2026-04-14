@@ -22,7 +22,13 @@ export async function proxy(request: NextRequest) {
     if (isPublic) return NextResponse.redirect(new URL('/', request.url))
     return NextResponse.next()
   } catch {
-    // Expired or revoked — clear the cookie and redirect to login
+    // Expired or revoked — clear the cookie
+    if (isPublic) {
+      // Already on a public page — just strip the bad cookie and continue
+      const response = NextResponse.next()
+      response.cookies.delete('session')
+      return response
+    }
     const response = NextResponse.redirect(new URL('/login', request.url))
     response.cookies.delete('session')
     return response

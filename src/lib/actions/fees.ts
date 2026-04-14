@@ -77,7 +77,51 @@ export async function createFeeStructure(
     updated_at: Timestamp.now(),
   })
 
-  return { success: true, id: docRef.id }
+  // Auto-generate fee records for all active students in the class
+  const studentsSnap = await adminDb()
+    .collection('students')
+    .where('school_id', '==', schoolId)
+    .where('class_id', '==', data.classId)
+    .where('status', '==', 'active')
+    .get()
+
+  let created = 0
+  let skipped = 0
+
+  // Batch writes for performance
+  const batch = adminDb().batch()
+  for (const studentDoc of studentsSnap.docs) {
+    const studentId = studentDoc.id
+    const existingSnap = await adminDb()
+      .collection('fees')
+      .where('school_id', '==', schoolId)
+      .where('student_id', '==', studentId)
+      .where('term_id', '==', data.termId)
+      .limit(1)
+      .get()
+
+    if (!existingSnap.empty) {
+      skipped++
+      continue
+    }
+
+    const feeRef = adminDb().collection('fees').doc()
+    batch.set(feeRef, {
+      student_id: studentId,
+      school_id: schoolId,
+      term_id: data.termId,
+      total_amount: data.amount,
+      amount_paid: 0,
+      notes: null,
+      created_by: decoded.uid,
+      created_at: Timestamp.now(),
+      updated_at: Timestamp.now(),
+    })
+    created++
+  }
+  await batch.commit()
+
+  return { success: true, id: docRef.id, created, skipped }
 }
 
 export async function getFeeStructuresBySchool(schoolId: string) {

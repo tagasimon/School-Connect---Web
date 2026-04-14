@@ -10,14 +10,14 @@ function serializeTimestamps<T extends Record<string, unknown>>(data: T): T {
   for (const [key, value] of Object.entries(data)) {
     if (value && typeof value === 'object') {
       const v = value as any
-      if ('_seconds' in v && typeof v._seconds === 'number') {
+      if (typeof v.toDate === 'function') {
+        result[key] = (v.toDate() as Date).toISOString()
+      } else if ('_seconds' in v && typeof v._seconds === 'number') {
         result[key] = new Date(v._seconds * 1000).toISOString()
       } else if ('seconds' in v && typeof v.seconds === 'number') {
         result[key] = new Date(v.seconds * 1000).toISOString()
-      } else if (typeof value === 'object') {
-        result[key] = serializeTimestamps(value as Record<string, unknown>)
       } else {
-        result[key] = value
+        result[key] = serializeTimestamps(value as Record<string, unknown>)
       }
     } else {
       result[key] = value

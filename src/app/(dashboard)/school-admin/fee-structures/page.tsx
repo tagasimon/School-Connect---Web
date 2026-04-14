@@ -59,23 +59,26 @@ export default async function SchoolAdminFeeStructuresPage() {
     ...serializeTimestamps(doc.data() as Record<string, unknown>),
   }))
 
-  // Enrich fee structures with class and term data
-  const feeStructures = await Promise.all(
-    feeStructuresSnap.docs.map(async (doc) => {
-      const data = doc.data()
-      const [classDoc, termDoc] = await Promise.all([
-        adminDb().collection('classes').doc(data.class_id).get(),
-        adminDb().collection('terms').doc(data.term_id).get(),
-      ])
-
-      return {
-        id: doc.id,
-        ...serializeTimestamps(data as Record<string, unknown>),
-        className: classDoc.exists ? ((classDoc.data() as any).name as string) : 'Unknown',
-        termName: termDoc.exists ? `${(termDoc.data() as any).name} ${(termDoc.data() as any).year}` : 'Unknown',
-      }
+  // Enrich fee structures with class and term data using already-fetched snapshots
+  const classMap = new Map(
+    classesSnap.docs.map(doc => [doc.id, (doc.data() as any).name as string])
+  )
+  const termMap = new Map(
+    termsSnap.docs.map(doc => {
+      const d = doc.data() as any
+      return [doc.id, `${d.name} ${d.year}`]
     })
   )
+
+  const feeStructures = feeStructuresSnap.docs.map(doc => {
+    const data = doc.data()
+    return {
+      id: doc.id,
+      ...serializeTimestamps(data as Record<string, unknown>),
+      className: classMap.get(data.class_id as string) ?? 'Unknown',
+      termName: termMap.get(data.term_id as string) ?? 'Unknown',
+    }
+  })
 
   return (
     <FeeStructuresPage
