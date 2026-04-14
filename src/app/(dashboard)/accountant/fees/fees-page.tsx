@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from 'react'
 import { getFeesByClass, recordPayment } from '@/lib/actions/fees'
-import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -18,6 +17,7 @@ interface ClassDoc {
   id: string
   name: string
   teacher_id: string | null
+  studentCount: number
 }
 
 interface FeeData {
@@ -43,7 +43,6 @@ export default function AccountantFeesPage({
   schoolId: string
   classes: ClassDoc[]
 }) {
-  const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [selectedClass, setSelectedClass] = useState<ClassDoc | null>(null)
   const [students, setStudents] = useState<StudentData[]>([])
@@ -55,12 +54,21 @@ export default function AccountantFeesPage({
   const [showPaid, setShowPaid] = useState(true)
 
   const handleSelectClass = async (cls: ClassDoc) => {
-    setLoading(true)
     setSelectedClass(cls)
     setPaymentInputs({})
     setErrors({})
     setShowPaid(true)
 
+    // Skip the fetch entirely for empty classes — show the empty state immediately
+    if (cls.studentCount === 0) {
+      setStudents([])
+      setFees({})
+      setCurrentTerm(null)
+      setLoading(false)
+      return
+    }
+
+    setLoading(true)
     const result = await getFeesByClass(schoolId, cls.id)
     setStudents(result.students as unknown as StudentData[])
     setFees(result.fees)
@@ -75,6 +83,7 @@ export default function AccountantFeesPage({
     setCurrentTerm(null)
     setPaymentInputs({})
     setErrors({})
+    setLoading(false)
   }
 
   const updateInput = (studentId: string, field: keyof PaymentInput[string], value: string) => {
@@ -118,15 +127,16 @@ export default function AccountantFeesPage({
       })
 
       if (result.success) {
-        const updated = await getFeesByClass(schoolId, selectedClass!.id)
-        setStudents(updated.students as unknown as StudentData[])
-        setFees(updated.fees)
+        // Optimistic update — no need to re-fetch the whole class
+        setFees(prev => ({
+          ...prev,
+          [studentId]: { ...prev[studentId], amount_paid: result.newAmountPaid },
+        }))
         setPaymentInputs(prev => {
           const next = { ...prev }
           delete next[studentId]
           return next
         })
-        router.refresh()
       } else if (result.error) {
         setErrors(prev => ({ ...prev, [studentId]: result.error || 'Failed' }))
       }
@@ -160,9 +170,7 @@ export default function AccountantFeesPage({
             <CardTitle className="text-white">Select a Class</CardTitle>
           </CardHeader>
           <CardContent>
-            {loading ? (
-              <p className="text-slate-400 text-center py-8">Loading...</p>
-            ) : classes.length === 0 ? (
+            {classes.length === 0 ? (
               <p className="text-slate-400 text-center py-8">No classes found.</p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
@@ -170,9 +178,12 @@ export default function AccountantFeesPage({
                   <button
                     key={cls.id}
                     onClick={() => handleSelectClass(cls)}
-                    className="p-3 bg-slate-800/50 rounded-lg border border-slate-700 hover:border-amber-500 hover:bg-slate-800 transition-colors text-left text-white font-medium text-sm"
+                    className="p-3 bg-slate-800/50 rounded-lg border border-slate-700 hover:border-amber-500 hover:bg-slate-800 transition-colors text-left"
                   >
-                    {cls.name}
+                    <p className="text-white font-medium text-sm">{cls.name}</p>
+                    <p className="text-slate-500 text-xs mt-0.5">
+                      {cls.studentCount === 0 ? 'No students' : `${cls.studentCount} student${cls.studentCount !== 1 ? 's' : ''}`}
+                    </p>
                   </button>
                 ))}
               </div>

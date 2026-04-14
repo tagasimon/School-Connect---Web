@@ -202,12 +202,20 @@ export async function getFeesWithStudents(schoolId: string) {
 }
 
 export async function getFeesByClass(schoolId: string, classId: string) {
-  // Get students in class (filter status in JS to avoid composite index requirement)
-  const studentsSnap = await adminDb()
-    .collection('students')
-    .where('school_id', '==', schoolId)
-    .where('class_id', '==', classId)
-    .get()
+  // Fetch students and current term in parallel
+  const [studentsSnap, termSnap] = await Promise.all([
+    adminDb()
+      .collection('students')
+      .where('school_id', '==', schoolId)
+      .where('class_id', '==', classId)
+      .get(),
+    adminDb()
+      .collection('terms')
+      .where('school_id', '==', schoolId)
+      .where('is_current', '==', true)
+      .limit(1)
+      .get(),
+  ])
 
   const students = studentsSnap.docs
     .filter(d => (d.data().status as string) === 'active')
@@ -218,29 +226,34 @@ export async function getFeesByClass(schoolId: string, classId: string) {
     })
     .map(d => serializeTimestamps({ id: d.id, ...d.data() } as any))
 
-  // Get current term
-  const termSnap = await adminDb()
-    .collection('terms')
-    .where('school_id', '==', schoolId)
-    .where('is_current', '==', true)
-    .limit(1)
-    .get()
-
   const currentTerm = termSnap.empty ? null : serializeTimestamps({ id: termSnap.docs[0].id, ...termSnap.docs[0].data() } as any)
 
-  // Get fee records for these students
   const fees: Record<string, any> = {}
-  for (const student of students) {
-    const feeSnap = await adminDb()
-      .collection('fees')
-      .where('school_id', '==', schoolId)
-      .where('student_id', '==', student.id)
-      .where('term_id', '==', currentTerm?.id)
-      .limit(1)
-      .get()
 
-    if (!feeSnap.empty) {
-      fees[student.id] = serializeTimestamps({ id: feeSnap.docs[0].id, ...feeSnap.docs[0].data() } as any)
+  if (students.length > 0 && currentTerm) {
+    // Batch fetch all fees in one round trip using `in` (max 30 per query)
+    const studentIds = students.map((s: any) => s.id)
+    const chunks: string[][] = []
+    for (let i = 0; i < studentIds.length; i += 30) {
+      chunks.push(studentIds.slice(i, i + 30))
+    }
+
+    const feeSnaps = await Promise.all(
+      chunks.map(chunk =>
+        adminDb()
+          .collection('fees')
+          .where('school_id', '==', schoolId)
+          .where('term_id', '==', currentTerm.id)
+          .where('student_id', 'in', chunk)
+          .get()
+      )
+    )
+
+    for (const snap of feeSnaps) {
+      for (const doc of snap.docs) {
+        const data = doc.data()
+        fees[data.student_id as string] = serializeTimestamps({ id: doc.id, ...data } as any)
+      }
     }
   }
 

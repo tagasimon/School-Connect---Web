@@ -33,16 +33,24 @@ export default async function AccountantFeesPageWrapper() {
   const profile = await getCurrentProfile(uid)
   if (!profile?.school_id) redirect('/login')
 
-  // Fetch all classes for the school
-  const classesSnap = await adminDb()
-    .collection('classes')
-    .where('school_id', '==', profile.school_id)
-    .get()
+  // Fetch classes and students in parallel to compute per-class counts
+  const [classesSnap, studentsSnap] = await Promise.all([
+    adminDb().collection('classes').where('school_id', '==', profile.school_id).get(),
+    adminDb().collection('students').where('school_id', '==', profile.school_id).get(),
+  ])
+
+  const studentCounts = new Map<string, number>()
+  for (const doc of studentsSnap.docs) {
+    if ((doc.data() as any).status !== 'active') continue
+    const cid = (doc.data() as any).class_id as string
+    studentCounts.set(cid, (studentCounts.get(cid) ?? 0) + 1)
+  }
 
   const classes = classesSnap.docs.map(doc => ({
     id: doc.id,
     name: (doc.data() as any).name as string,
     teacher_id: (doc.data() as any).teacher_id as string | null,
+    studentCount: studentCounts.get(doc.id) ?? 0,
   }))
 
   return <AccountantFeesPage schoolId={profile.school_id} classes={classes as any} />
