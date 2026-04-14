@@ -15,7 +15,9 @@ export async function proxy(request: NextRequest) {
   }
 
   try {
-    const decodedClaims = await adminAuth().verifySessionCookie(sessionCookie, true)
+    // Optimistic check — verify JWT signature only, no revocation network call.
+    // Full revocation check (checkRevoked: true) happens inside each page/action.
+    const decodedClaims = await adminAuth().verifySessionCookie(sessionCookie, false)
     // Valid session on a public page → send to home (which will redirect to role dashboard)
     if (isPublic) return NextResponse.redirect(new URL('/', request.url))
     return NextResponse.next()
