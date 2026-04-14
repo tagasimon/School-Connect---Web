@@ -11,6 +11,7 @@ import {
   ArrowLeft,
   Send,
   Filter,
+  Search,
 } from 'lucide-react'
 
 interface ClassDoc {
@@ -52,12 +53,14 @@ export default function AccountantFeesPage({
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
   const [showPaid, setShowPaid] = useState(true)
+  const [search, setSearch] = useState('')
 
   const handleSelectClass = async (cls: ClassDoc) => {
     setSelectedClass(cls)
     setPaymentInputs({})
     setErrors({})
     setShowPaid(true)
+    setSearch('')
 
     // Skip the fetch entirely for empty classes — show the empty state immediately
     if (cls.studentCount === 0) {
@@ -84,6 +87,7 @@ export default function AccountantFeesPage({
     setPaymentInputs({})
     setErrors({})
     setLoading(false)
+    setSearch('')
   }
 
   const updateInput = (studentId: string, field: keyof PaymentInput[string], value: string) => {
@@ -143,10 +147,16 @@ export default function AccountantFeesPage({
     })
   }
 
-  // Filter: show only unpaid if toggle is off
+  // Filter: unpaid toggle + search
   const filteredStudents = students.filter(s => {
     const fee = fees[s.id]
     if (!showPaid && fee && fee.amount_paid >= fee.total_amount) return false
+    if (search) {
+      const q = search.toLowerCase()
+      const nameMatch = s.full_name.toLowerCase().includes(q)
+      const numMatch = s.student_number?.toLowerCase().includes(q) ?? false
+      if (!nameMatch && !numMatch) return false
+    }
     return true
   })
 
@@ -197,9 +207,9 @@ export default function AccountantFeesPage({
   // ── Spreadsheet View ───────────────────────────────────────────────────
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-3" style={{ height: 'calc(100vh - 140px)' }}>
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
@@ -228,24 +238,37 @@ export default function AccountantFeesPage({
         </Button>
       </div>
 
+      {/* Search */}
+      <div className="relative flex-shrink-0">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+        <Input
+          placeholder="Search by name or student number…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="bg-slate-900 border-slate-700 text-white pl-9 placeholder:text-slate-600 h-9"
+        />
+      </div>
+
       {loading ? (
-        <Card className="bg-slate-900 border-slate-800">
+        <Card className="bg-slate-900 border-slate-800 flex-1">
           <CardContent className="py-12 text-center">
             <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-amber-500 border-r-transparent" />
             <p className="text-slate-400 mt-3">Loading students...</p>
           </CardContent>
         </Card>
       ) : filteredStudents.length === 0 ? (
-        <Card className="bg-slate-900 border-slate-800">
+        <Card className="bg-slate-900 border-slate-800 flex-1">
           <CardContent className="py-12 text-center">
-            <p className="text-slate-400">{showPaid ? 'No active students in this class.' : 'All students are fully paid!'}</p>
+            <p className="text-slate-400">
+              {search ? `No students match "${search}"` : showPaid ? 'No active students in this class.' : 'All students are fully paid!'}
+            </p>
           </CardContent>
         </Card>
       ) : (
-        <Card className="bg-slate-900 border-slate-800 overflow-hidden">
-          <div className="overflow-x-auto">
+        <Card className="bg-slate-900 border-slate-800 overflow-hidden flex-1 min-h-0">
+          <div className="overflow-auto h-full">
             <table className="w-full text-sm">
-              <thead>
+              <thead className="sticky top-0 z-20">
                 <tr className="bg-slate-800/80 border-b border-slate-700">
                   <th className="text-left py-3 px-3 text-slate-400 font-medium sticky left-0 bg-slate-800/80 z-10 min-w-[180px]">Student</th>
                   <th className="text-right py-3 px-3 text-slate-400 font-medium w-28">Total</th>
