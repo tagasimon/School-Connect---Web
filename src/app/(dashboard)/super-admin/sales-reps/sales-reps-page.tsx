@@ -3,10 +3,11 @@
 import { useState, useTransition } from 'react'
 import { createSalesRep, updateSalesRep, deleteSalesRep } from '@/lib/actions/billing'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Plus, Users, Edit2, Trash2, CheckCircle, XCircle } from 'lucide-react'
+import { Plus, Users, Edit2, Trash2, CheckCircle, XCircle, Eye } from 'lucide-react'
 
 interface SalesRep {
   id: string
@@ -16,7 +17,23 @@ interface SalesRep {
   is_active: boolean
 }
 
-export default function SalesRepsPage({ salesReps: initialReps }: { salesReps: SalesRep[] }) {
+interface SalesRepPerformance {
+  [repId: string]: {
+    name: string
+    invoiced: number
+    collected: number
+    pending: number
+    schools: number
+  }
+}
+
+export default function SalesRepsPage({
+  salesReps: initialReps,
+  salesRepPerformance,
+}: {
+  salesReps: SalesRep[]
+  salesRepPerformance: SalesRepPerformance
+}) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [showForm, setShowForm] = useState(false)
@@ -141,45 +158,73 @@ export default function SalesRepsPage({ salesReps: initialReps }: { salesReps: S
                     <th className="text-left py-3 px-4 text-sm text-slate-400 font-medium">Name</th>
                     <th className="text-left py-3 px-4 text-sm text-slate-400 font-medium">Email</th>
                     <th className="text-left py-3 px-4 text-sm text-slate-400 font-medium">Phone</th>
+                    <th className="text-right py-3 px-4 text-sm text-slate-400 font-medium">Schools</th>
+                    <th className="text-right py-3 px-4 text-sm text-slate-400 font-medium">Collected</th>
+                    <th className="text-right py-3 px-4 text-sm text-slate-400 font-medium">Rate</th>
                     <th className="text-center py-3 px-4 text-sm text-slate-400 font-medium">Status</th>
                     <th className="text-center py-3 px-4 text-sm text-slate-400 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {salesReps.map(rep => (
-                    <tr key={rep.id} className="border-b border-slate-800">
-                      <td className="py-3 px-4 text-white font-medium">{rep.full_name}</td>
-                      <td className="py-3 px-4 text-slate-300">{rep.email || '—'}</td>
-                      <td className="py-3 px-4 text-slate-300">{rep.phone || '—'}</td>
-                      <td className="py-3 px-4 text-center">
-                        <button
-                          onClick={() => handleToggleActive(rep)}
-                          className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs ${
-                            rep.is_active
-                              ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-                              : 'bg-slate-500/20 text-slate-400 hover:bg-slate-500/30'
-                          }`}
-                        >
-                          {rep.is_active ? (
-                            <><CheckCircle className="w-3 h-3" /> Active</>
-                          ) : (
-                            <><XCircle className="w-3 h-3" /> Inactive</>
-                          )}
-                        </button>
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => handleDelete(rep.id)}
-                            className="text-red-400 hover:text-red-300"
-                            title="Delete"
+                  {salesReps.map(rep => {
+                    const perf = salesRepPerformance?.[rep.id]
+                    const rate = perf && perf.invoiced > 0
+                      ? ((perf.collected / perf.invoiced) * 100).toFixed(1)
+                      : '0'
+                    return (
+                      <tr key={rep.id} className="border-b border-slate-800">
+                        <td className="py-3 px-4">
+                          <Link
+                            href={`/super-admin/sales-reps/${rep.id}`}
+                            className="text-amber-400 hover:text-amber-300 font-medium hover:underline"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            {rep.full_name}
+                          </Link>
+                        </td>
+                        <td className="py-3 px-4 text-slate-300">{rep.email || '—'}</td>
+                        <td className="py-3 px-4 text-slate-300">{rep.phone || '—'}</td>
+                        <td className="py-3 px-4 text-right text-slate-300">{perf?.schools || 0}</td>
+                        <td className="py-3 px-4 text-right text-green-400">
+                          {perf ? `UGX ${perf.collected.toLocaleString()}` : '—'}
+                        </td>
+                        <td className="py-3 px-4 text-right text-slate-300">{rate}%</td>
+                        <td className="py-3 px-4 text-center">
+                          <button
+                            onClick={() => handleToggleActive(rep)}
+                            className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs ${
+                              rep.is_active
+                                ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                                : 'bg-slate-500/20 text-slate-400 hover:bg-slate-500/30'
+                            }`}
+                          >
+                            {rep.is_active ? (
+                              <><CheckCircle className="w-3 h-3" /> Active</>
+                            ) : (
+                              <><XCircle className="w-3 h-3" /> Inactive</>
+                            )}
                           </button>
-                        </div>
-                      </td>
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <Link
+                              href={`/super-admin/sales-reps/${rep.id}`}
+                              className="text-blue-400 hover:text-blue-300"
+                              title="View Details"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Link>
+                            <button
+                              onClick={() => handleDelete(rep.id)}
+                              className="text-red-400 hover:text-red-300"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

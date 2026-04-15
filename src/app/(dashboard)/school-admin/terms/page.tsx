@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation'
 import { getSessionUid } from '@/lib/firebase/session'
 import { getCurrentProfile } from '@/lib/firebase/queries'
-import { getSalesReps, getBillingOverview } from '@/lib/actions/billing'
-import SalesRepsPage from './sales-reps-page'
+import { adminDb } from '@/lib/firebase/admin'
+import TermsPage from './terms-page'
 
 function serializeTimestamps<T extends Record<string, unknown>>(data: T): T {
   if (!data) return data
@@ -10,14 +10,14 @@ function serializeTimestamps<T extends Record<string, unknown>>(data: T): T {
   for (const [key, value] of Object.entries(data)) {
     if (value && typeof value === 'object') {
       const v = value as any
-      if ('_seconds' in v && typeof v._seconds === 'number') {
+      if (typeof v.toDate === 'function') {
+        result[key] = (v.toDate() as Date).toISOString()
+      } else if ('_seconds' in v && typeof v._seconds === 'number') {
         result[key] = new Date(v._seconds * 1000).toISOString()
       } else if ('seconds' in v && typeof v.seconds === 'number') {
         result[key] = new Date(v.seconds * 1000).toISOString()
-      } else if (typeof value === 'object') {
-        result[key] = serializeTimestamps(value as Record<string, unknown>)
       } else {
-        result[key] = value
+        result[key] = serializeTimestamps(value as Record<string, unknown>)
       }
     } else {
       result[key] = value
@@ -26,19 +26,19 @@ function serializeTimestamps<T extends Record<string, unknown>>(data: T): T {
   return result as T
 }
 
-export default async function SuperAdminSalesRepsPage() {
+export default async function SchoolAdminTermsPage() {
   const uid = await getSessionUid()
   if (!uid) redirect('/login')
 
   const profile = await getCurrentProfile(uid)
-  if (!profile) redirect('/login')
+  if (!profile?.school_id) redirect('/login')
 
-  const [salesReps, billing] = await Promise.all([
-    getSalesReps(),
-    getBillingOverview(),
-  ])
+  const termsSnap = await adminDb()
+    .collection('terms')
+    .where('school_id', '==', profile.school_id)
+    .get()
 
-  const serializedReps = salesReps.map(r => serializeTimestamps({ id: r.id, ...(r as any) }))
+  const terms = termsSnap.docs.map(doc => serializeTimestamps({ id: doc.id, ...doc.data() } as Record<string, unknown>))
 
-  return <SalesRepsPage salesReps={serializedReps as any} salesRepPerformance={billing.salesRepPerformance} />
+  return <TermsPage terms={terms as any} schoolId={profile.school_id} />
 }

@@ -13,6 +13,19 @@ import {
   Users,
   School,
 } from 'lucide-react'
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from 'recharts'
 
 interface ReportData {
   schoolId: string
@@ -271,6 +284,38 @@ export default function AccountantReportsPage({
             </Card>
           </div>
 
+          {/* Fee Collection Chart — Billed vs Collected vs Outstanding per Class */}
+          <Card className="bg-slate-900 border-slate-800">
+            <CardHeader>
+              <CardTitle className="text-white">Fee Collection by Class</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart
+                  data={classReportData.map(c => ({
+                    name: c.className,
+                    billed: c.billed,
+                    collected: c.paid,
+                    outstanding: c.balance,
+                  }))}
+                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                  <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                  <YAxis tickFormatter={v => `${(v / 1000).toFixed(0)}K`} tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                  <Tooltip
+                    formatter={v => `UGX ${Number(v).toLocaleString()}`}
+                    contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                  />
+                  <Legend />
+                  <Bar dataKey="billed" fill="#3b82f6" name="Billed" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="collected" fill="#22c55e" name="Collected" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="outstanding" fill="#f59e0b" name="Outstanding" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
           {/* Quick Stats */}
           <Card className="bg-slate-900 border-slate-800">
             <CardHeader>
@@ -381,6 +426,54 @@ export default function AccountantReportsPage({
       {/* ── Overdue Tab ──────────────────────────────────────────────── */}
       {activeTab === 'overdue' && (
         <>
+          {/* Payment Status PieChart */}
+          <Card className="bg-slate-900 border-slate-800">
+            <CardHeader>
+              <CardTitle className="text-white">Payment Status Distribution</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const fullyPaid = fees.filter(f => (f.amount_paid as number) >= (f.total_amount as number)).length
+                const unpaid = fees.filter(f => (f.amount_paid as number) === 0).length
+                const partiallyPaid = fees.filter(f => {
+                  const paid = f.amount_paid as number
+                  const total = f.total_amount as number
+                  return paid > 0 && paid < total
+                }).length
+
+                const pieData = [
+                  { name: 'Fully Paid', value: fullyPaid, color: '#22c55e' },
+                  { name: 'Partially Paid', value: partiallyPaid, color: '#f59e0b' },
+                  { name: 'Unpaid', value: unpaid, color: '#ef4444' },
+                ].filter(d => d.value > 0)
+
+                return pieData.length === 0 ? (
+                  <p className="text-slate-400 text-center py-8">No fee data available.</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <PieChart>
+                      <Pie
+                        data={pieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={100}
+                        paddingAngle={5}
+                        dataKey="value"
+                        label={({ name, value }) => `${name}: ${value}`}
+                      >
+                        {pieData.map((entry, i) => (
+                          <Cell key={i} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )
+              })()}
+            </CardContent>
+          </Card>
+
           <Card className="bg-slate-900 border-slate-800">
             <CardHeader>
               <CardTitle className="text-white flex items-center gap-2">

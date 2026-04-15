@@ -10,6 +10,16 @@ import {
   FileDown,
   Download,
 } from 'lucide-react'
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts'
 
 interface BillingData {
   totalInvoiced: number
@@ -140,6 +150,39 @@ export default function ReportsPage({
               </CardContent>
             </Card>
           </div>
+
+          {/* Revenue Chart — Top 10 Schools */}
+          <Card className="bg-slate-900 border-slate-800">
+            <CardHeader>
+              <CardTitle className="text-white">Revenue by School (Top 10)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart
+                  data={[...billing.billingBySchool]
+                    .sort((a, b) => b.agreedAmount - a.agreedAmount)
+                    .slice(0, 10)
+                    .map(b => ({
+                      name: b.schoolName.split(' ')[0],
+                      invoiced: b.agreedAmount,
+                      collected: b.totalPaid,
+                    }))}
+                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                  <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                  <YAxis tickFormatter={v => `${(v / 1000).toFixed(0)}K`} tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                  <Tooltip
+                    formatter={v => `UGX ${Number(v).toLocaleString()}`}
+                    contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                  />
+                  <Legend />
+                  <Bar dataKey="invoiced" fill="#3b82f6" name="Invoiced" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="collected" fill="#22c55e" name="Collected" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
 
           <Card className="bg-slate-900 border-slate-800">
             <CardHeader>

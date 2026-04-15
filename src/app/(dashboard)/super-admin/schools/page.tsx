@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getSessionUid } from '@/lib/firebase/session'
 import { getCurrentProfile } from '@/lib/firebase/queries'
 import { adminDb } from '@/lib/firebase/admin'
+import { getSalesReps, getAllSchoolContracts } from '@/lib/actions/billing'
 import { Timestamp } from 'firebase-admin/firestore'
 import SchoolsPage from './schools-page'
 
@@ -36,12 +37,19 @@ export default async function SuperAdminSchoolsWrapper() {
   const profile = await getCurrentProfile(uid)
   if (!profile) redirect('/login')
 
-  const schoolsSnap = await adminDb()
-    .collection('schools')
-    .orderBy('created_at', 'desc')
-    .get()
+  const [schoolsSnap, salesReps, contracts] = await Promise.all([
+    adminDb().collection('schools').orderBy('created_at', 'desc').get(),
+    getSalesReps(),
+    getAllSchoolContracts(),
+  ])
 
   const schools = schoolsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+
+  // Build contract map: schoolId -> contract
+  const contractMap: Record<string, any> = {}
+  contracts.forEach((c: any) => {
+    contractMap[c.school_id] = c
+  })
 
   // Get counts for each school
   const schoolsWithCounts = await Promise.all(
@@ -51,14 +59,25 @@ export default async function SuperAdminSchoolsWrapper() {
         adminDb().collection('users').where('school_id', '==', school.id).where('role', '==', 'teacher').count().get(),
         adminDb().collection('classes').where('school_id', '==', school.id).count().get(),
       ])
-      return serializeTimestamps({
+      const serializedSchool = serializeTimestamps({
         ...school,
         studentCount: students.data().count,
         teacherCount: teachers.data().count,
         classCount: classes.data().count,
       }) as any
+      // Attach contract info
+      const contract = contractMap[school.id]
+      return {
+        ...serializedSchool,
+        contractId: contract?.id || null,
+        assignedRepId: contract?.sales_rep_id || null,
+        agreedAmount: contract?.agreed_amount || null,
+        contractStatus: contract?.status || null,
+      }
     })
   )
 
-  return <SchoolsPage schoolsData={schoolsWithCounts} />
+  const serializedSalesReps = salesReps.map((r: any) => serializeTimestamps({ id: r.id, ...(r as any) }))
+
+  return <SchoolsPage schoolsData={schoolsWithCounts} salesReps={serializedSalesReps as any} />
 }

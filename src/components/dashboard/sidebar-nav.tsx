@@ -16,6 +16,7 @@ import {
   Settings,
   GraduationCap,
   Wallet,
+  Calendar,
 } from 'lucide-react'
 
 const NAV_BY_ROLE: Record<UserRole, { href: string; label: string; icon: React.ElementType }[]> = {
@@ -32,6 +33,7 @@ const NAV_BY_ROLE: Record<UserRole, { href: string; label: string; icon: React.E
     { href: '/school-admin/students', label: 'Students', icon: GraduationCap },
     { href: '/school-admin/teachers', label: 'Teachers', icon: Users },
     { href: '/school-admin/classes', label: 'Classes', icon: BookOpen },
+    { href: '/school-admin/terms', label: 'Terms', icon: Calendar },
     { href: '/school-admin/fee-structures', label: 'Fee Structures', icon: Wallet },
     { href: '/school-admin/announcements', label: 'Announcements', icon: Megaphone },
     { href: '/school-admin/reports', label: 'Reports', icon: BarChart3 },

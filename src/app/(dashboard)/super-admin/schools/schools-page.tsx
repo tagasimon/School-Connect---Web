@@ -1,14 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { createSchool } from '@/lib/actions/schools'
+import { upsertSchoolContract } from '@/lib/actions/billing'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Plus, Search, Building2, Users, Calendar, CheckCircle, XCircle, X } from 'lucide-react'
+import { Plus, Search, Building2, Users, Calendar, CheckCircle, XCircle, X, UserPlus } from 'lucide-react'
 
 interface SchoolWithCounts {
   id: string
@@ -22,16 +23,31 @@ interface SchoolWithCounts {
   studentCount: number
   teacherCount: number
   classCount: number
+  contractId: string | null
+  assignedRepId: string | null
+  agreedAmount: number | null
+  contractStatus: string | null
+}
+
+interface SalesRep {
+  id: string
+  full_name: string
+  is_active: boolean
 }
 
 export default function SuperAdminSchoolsPage({
   schoolsData,
+  salesReps,
 }: {
   schoolsData: SchoolWithCounts[]
+  salesReps: SalesRep[]
 }) {
   const router = useRouter()
+  const [isPending, startTransition] = useTransition()
   const [showAddModal, setShowAddModal] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [assigningSchoolId, setAssigningSchoolId] = useState<string | null>(null)
+  const [assigningRepId, setAssigningRepId] = useState<string>('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [formData, setFormData] = useState({
     name: '',
@@ -41,6 +57,20 @@ export default function SuperAdminSchoolsPage({
     subscriptionPlan: 'standard',
   })
   const [error, setError] = useState('')
+
+  const handleAssignRep = (schoolId: string, repId: string, agreedAmount: number) => {
+    if (!repId) return
+    startTransition(async () => {
+      await upsertSchoolContract(schoolId, {
+        salesRepId: repId,
+        agreedAmount,
+        status: 'active',
+      })
+      setAssigningSchoolId(null)
+      setAssigningRepId('')
+      router.refresh()
+    })
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -199,6 +229,52 @@ export default function SuperAdminSchoolsPage({
                       )}
                     </div>
                     <div className="flex items-center gap-2">
+                      {/* Assign Rep Dropdown */}
+                      {assigningSchoolId === school.id ? (
+                        <div className="flex items-center gap-1">
+                          <select
+                            value={assigningRepId}
+                            onChange={(e) => setAssigningRepId(e.target.value)}
+                            className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                            autoFocus
+                          >
+                            <option value="">Select rep</option>
+                            {salesReps.filter(r => r.is_active).map(rep => (
+                              <option key={rep.id} value={rep.id}>{rep.full_name}</option>
+                            ))}
+                          </select>
+                          <Button
+                            size="sm"
+                            onClick={() => handleAssignRep(school.id, assigningRepId, school.agreedAmount || 0)}
+                            disabled={isPending || !assigningRepId}
+                            className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs px-2 py-1 h-7"
+                          >
+                            Save
+                          </Button>
+                          <button
+                            onClick={() => { setAssigningSchoolId(null); setAssigningRepId('') }}
+                            className="text-slate-400 hover:text-white p-1"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setAssigningSchoolId(school.id)
+                            setAssigningRepId(school.assignedRepId || '')
+                          }}
+                          className="text-slate-400 hover:text-amber-400 p-1"
+                          title="Assign Sales Rep"
+                        >
+                          <UserPlus className="w-4 h-4" />
+                        </button>
+                      )}
+                      {school.assignedRepId && (
+                        <span className="text-xs text-slate-500">
+                          {salesReps.find(r => r.id === school.assignedRepId)?.full_name?.split(' ')[0] || 'Rep'}
+                        </span>
+                      )}
                       <Link href={`/super-admin/schools/${school.id}/billing`}>
                         <Button
                           variant="outline"

@@ -13,6 +13,19 @@ import {
   CheckCircle,
   XCircle,
 } from 'lucide-react'
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts'
 
 export default function SchoolAdminReportsPage({
   schoolName,
@@ -30,6 +43,8 @@ export default function SchoolAdminReportsPage({
   announcements: Record<string, any>[]
 }) {
   const [activeTab, setActiveTab] = useState<'enrollment' | 'fees' | 'attendance' | 'announcements'>('enrollment')
+
+  const COLORS = ['#f59e0b', '#3b82f6', '#22c55e', '#a855f7', '#ef4444', '#06b6d4', '#f97316', '#ec4899', '#84cc16', '#6366f1']
 
   const downloadCSV = (filename: string, headers: string[], rows: string[][]) => {
     const csvContent = [
@@ -157,6 +172,38 @@ export default function SchoolAdminReportsPage({
               </CardContent>
             </Card>
           </div>
+
+          <Card className="bg-slate-900 border-slate-800">
+            <CardHeader>
+              <CardTitle className="text-white">Student Distribution by Class</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {enrollmentByClass.filter(c => c.studentCount > 0).length === 0 ? (
+                <p className="text-slate-400 text-center py-8">No enrollment data yet.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={280}>
+                  <PieChart>
+                    <Pie
+                      data={enrollmentByClass.filter(c => c.studentCount > 0)}
+                      nameKey="className"
+                      dataKey="studentCount"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={100}
+                      paddingAngle={5}
+                      label={(entry) => `${(entry as any).className}: ${(entry as any).studentCount}`}
+                    >
+                      {enrollmentByClass.filter(c => c.studentCount > 0).map((_, i) => (
+                        <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
 
           <Card className="bg-slate-900 border-slate-800">
             <CardHeader>
@@ -333,6 +380,39 @@ export default function SchoolAdminReportsPage({
               </CardContent>
             </Card>
           </div>
+
+          <Card className="bg-slate-900 border-slate-800">
+            <CardHeader>
+              <CardTitle className="text-white">Attendance Rate by Class</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {attendanceByClass.length === 0 ? (
+                <p className="text-slate-400 text-center py-8">No attendance data yet.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart
+                    data={attendanceByClass.map(c => ({
+                      name: c.className,
+                      present: parseFloat(c.rate),
+                      absent: (100 - parseFloat(c.rate)).toFixed(1),
+                    }))}
+                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                    <YAxis tickFormatter={v => `${v}%`} tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                    <Tooltip
+                      formatter={v => `${v}%`}
+                      contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                    />
+                    <Legend />
+                    <Bar dataKey="present" fill="#22c55e" name="Present %" stackId="a" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="absent" fill="#ef4444" name="Absent %" stackId="a" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
 
           <Card className="bg-slate-900 border-slate-800">
             <CardHeader>
