@@ -2,9 +2,8 @@ import { redirect } from 'next/navigation'
 import { getSessionUid } from '@/lib/firebase/session'
 import { getCurrentProfile, getClassesForTeacher } from '@/lib/firebase/queries'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import Link from 'next/link'
-import { BookOpen, ArrowRight } from 'lucide-react'
+import { BookOpen, ChevronRight } from 'lucide-react'
 
 export default async function TeacherResultsPage() {
   const uid = await getSessionUid()
@@ -33,19 +32,20 @@ export default async function TeacherResultsPage() {
           {classes.length === 0 ? (
             <p className="text-slate-400">No classes assigned yet.</p>
           ) : (
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {classes.map((cls) => (
-                <Link key={cls.id} href={`/teacher/results/${cls.id}`}>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-between border-slate-700 text-slate-300 hover:border-blue-500 hover:text-blue-400"
-                  >
-                    {cls.name}
+                <Link
+                  key={cls.id}
+                  href={`/teacher/results/${cls.id}`}
+                  className="flex items-center justify-between p-4 rounded-lg border border-slate-700 bg-slate-800/50 hover:border-blue-500 transition-colors group"
+                >
+                  <div>
+                    <p className="text-white font-medium">{cls.name}</p>
                     {cls.term_name && (
-                      <span className="text-xs text-slate-500">{cls.term_name}</span>
+                      <p className="text-slate-400 text-sm">{cls.term_name}</p>
                     )}
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-blue-400 transition-colors" />
                 </Link>
               ))}
             </div>

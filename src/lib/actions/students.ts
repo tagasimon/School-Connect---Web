@@ -324,6 +324,22 @@ async function autoGenerateFeeForStudent(
 
 // ── Class-based student queries ────────────────────────────────────────────
 
+// Firestore `in` filter max is 30 items — chunk IDs and merge results
+async function batchIn(
+  collection: string,
+  field: string,
+  ids: string[],
+) {
+  if (ids.length === 0) return []
+  const db = adminDb()
+  const chunks: string[][] = []
+  for (let i = 0; i < ids.length; i += 30) chunks.push(ids.slice(i, i + 30))
+  const snaps = await Promise.all(
+    chunks.map((chunk) => db.collection(collection).where(field, 'in', chunk).get()),
+  )
+  return snaps.flatMap((s) => s.docs)
+}
+
 export async function getStudentsByClass(schoolId: string, classId: string) {
   const studentsSnap = await adminDb()
     .collection('students')
@@ -333,67 +349,77 @@ export async function getStudentsByClass(schoolId: string, classId: string) {
     .orderBy('full_name')
     .get()
 
-  const students = await Promise.all(
-    studentsSnap.docs.map(async (doc) => {
-      const studentData = doc.data()
+  if (studentsSnap.empty) return []
 
-      // Get parent info
-      const parentSnap = await adminDb()
-        .collection('parent_student')
-        .where('student_id', '==', doc.id)
-        .where('is_primary', '==', true)
-        .limit(1)
-        .get()
+  const studentIds = studentsSnap.docs.map((d) => d.id)
 
-      let parentInfo: { name: string; phone: string; relationship: string } | null = null
-      if (!parentSnap.empty) {
-        const parentData = parentSnap.docs[0].data()
-        const parentId = parentData.parent_id as string
-        const parentDoc = await adminDb().collection('users').doc(parentId).get()
-        if (parentDoc.exists) {
-          const pd = parentDoc.data()
-          parentInfo = {
-            name: (pd?.full_name as string) || 'Unknown',
-            phone: (pd?.phone as string) || '',
-            relationship: (parentData.relationship as string) || '',
-          }
+  // Batch-fetch all related collections in parallel — one round-trip each
+  const [parentStudentDocs, commitmentDocs, feeDocs] = await Promise.all([
+    batchIn('parent_student', 'student_id', studentIds),
+    batchIn('student_commitments', 'student_id', studentIds),
+    batchIn('fees', 'student_id', studentIds),
+  ])
+
+  // Filter primary parent links and collect parent user IDs
+  const primaryLinks = parentStudentDocs.filter((d) => d.data().is_primary === true)
+  const parentUserIds = [...new Set(primaryLinks.map((d) => d.data().parent_id as string))]
+
+  // Batch-fetch parent user docs
+  const parentUserDocs =
+    parentUserIds.length > 0
+      ? await Promise.all(
+          parentUserIds.map((id) => adminDb().collection('users').doc(id).get()),
+        )
+      : []
+
+  // Build lookup maps
+  const primaryLinkByStudent = new Map(primaryLinks.map((d) => [d.data().student_id as string, d]))
+  const parentUserById = new Map(parentUserDocs.filter((d) => d.exists).map((d) => [d.id, d.data()]))
+
+  const commitmentsByStudent = new Map<string, { id: string; name: string; amount: number }[]>()
+  for (const d of commitmentDocs) {
+    const sid = d.data().student_id as string
+    if (!commitmentsByStudent.has(sid)) commitmentsByStudent.set(sid, [])
+    commitmentsByStudent.get(sid)!.push({
+      id: d.id,
+      name: d.data().name as string,
+      amount: d.data().amount as number,
+    })
+  }
+
+  const feeByStudent = new Map<string, { id: string; total_amount: number; amount_paid: number }>()
+  for (const d of feeDocs) {
+    const sid = d.data().student_id as string
+    if (!feeByStudent.has(sid)) {
+      feeByStudent.set(sid, {
+        id: d.id,
+        total_amount: d.data().total_amount as number,
+        amount_paid: d.data().amount_paid as number,
+      })
+    }
+  }
+
+  // Assemble results from in-memory maps — no more per-student network calls
+  return studentsSnap.docs.map((doc) => {
+    const link = primaryLinkByStudent.get(doc.id)
+    let parentInfo: { name: string; phone: string; relationship: string } | null = null
+    if (link) {
+      const pd = parentUserById.get(link.data().parent_id as string)
+      if (pd) {
+        parentInfo = {
+          name: (pd.full_name as string) || 'Unknown',
+          phone: (pd.phone as string) || '',
+          relationship: (link.data().relationship as string) || '',
         }
       }
+    }
 
-      // Get commitments
-      const commitmentsSnap = await adminDb()
-        .collection('student_commitments')
-        .where('student_id', '==', doc.id)
-        .get()
-
-      const commitments = commitmentsSnap.docs.map(d => ({
-        id: d.id,
-        name: d.data().name as string,
-        amount: d.data().amount as number,
-      }))
-
-      // Get fee info
-      const feeSnap = await adminDb()
-        .collection('fees')
-        .where('student_id', '==', doc.id)
-        .limit(1)
-        .get()
-
-      const fee = feeSnap.empty ? null : {
-        id: feeSnap.docs[0].id,
-        total_amount: feeSnap.docs[0].data().total_amount as number,
-        amount_paid: feeSnap.docs[0].data().amount_paid as number,
-      }
-
-      return serializeTimestamps({
-        id: doc.id,
-        ...studentData,
-        parent: parentInfo,
-        commitments,
-        fee,
-      } as any)
-    })
-  )
-
-  return students
+    return serializeTimestamps({
+      id: doc.id,
+      ...doc.data(),
+      parent: parentInfo,
+      commitments: commitmentsByStudent.get(doc.id) ?? [],
+      fee: feeByStudent.get(doc.id) ?? null,
+    } as any)
+  })
 }

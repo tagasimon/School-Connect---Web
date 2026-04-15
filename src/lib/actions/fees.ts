@@ -14,20 +14,46 @@ function serializeTimestamps<T extends Record<string, unknown>>(data: T): T {
   for (const [key, value] of Object.entries(data)) {
     if (value && typeof value === 'object') {
       const v = value as any
-      if ('_seconds' in v && typeof v._seconds === 'number') {
+      if (typeof v.toDate === 'function') {
+        result[key] = (v.toDate() as Date).toISOString()
+      } else if ('_seconds' in v && typeof v._seconds === 'number') {
         result[key] = new Date(v._seconds * 1000).toISOString()
       } else if ('seconds' in v && typeof v.seconds === 'number') {
         result[key] = new Date(v.seconds * 1000).toISOString()
-      } else if (typeof value === 'object') {
-        result[key] = serializeTimestamps(value as Record<string, unknown>)
       } else {
-        result[key] = value
+        result[key] = serializeTimestamps(value as Record<string, unknown>)
       }
     } else {
       result[key] = value
     }
   }
   return result as T
+}
+
+// Chunk an array into slices of at most `size` (Firestore `in` limit is 30)
+function chunk<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size))
+  return chunks
+}
+
+// Fetch docs by IDs in batches using `in`, returns a Map of id → data
+async function batchGetByIds(
+  collection: string,
+  ids: string[]
+): Promise<Map<string, Record<string, unknown>>> {
+  const map = new Map<string, Record<string, unknown>>()
+  if (ids.length === 0) return map
+
+  const snaps = await Promise.all(
+    chunk([...new Set(ids)], 30).map(c =>
+      adminDb().collection(collection).where('__name__', 'in', c).get()
+    )
+  )
+  for (const snap of snaps) {
+    for (const doc of snap.docs) map.set(doc.id, doc.data())
+  }
+  return map
 }
 
 async function verifySession() {
@@ -85,41 +111,43 @@ export async function createFeeStructure(
     .where('status', '==', 'active')
     .get()
 
+  const studentIds = studentsSnap.docs.map(d => d.id)
   let created = 0
   let skipped = 0
 
-  // Batch writes for performance
-  const batch = adminDb().batch()
-  for (const studentDoc of studentsSnap.docs) {
-    const studentId = studentDoc.id
-    const existingSnap = await adminDb()
-      .collection('fees')
-      .where('school_id', '==', schoolId)
-      .where('student_id', '==', studentId)
-      .where('term_id', '==', data.termId)
-      .limit(1)
-      .get()
+  if (studentIds.length > 0) {
+    // Fetch all existing fee records for this term in one batch (no per-student queries)
+    const existingFeeSnaps = await Promise.all(
+      chunk(studentIds, 30).map(c =>
+        adminDb()
+          .collection('fees')
+          .where('school_id', '==', schoolId)
+          .where('term_id', '==', data.termId)
+          .where('student_id', 'in', c)
+          .get()
+      )
+    )
+    const alreadyHasFee = new Set(existingFeeSnaps.flatMap(s => s.docs.map(d => d.data().student_id as string)))
 
-    if (!existingSnap.empty) {
-      skipped++
-      continue
+    const batch = adminDb().batch()
+    for (const studentId of studentIds) {
+      if (alreadyHasFee.has(studentId)) { skipped++; continue }
+      const feeRef = adminDb().collection('fees').doc()
+      batch.set(feeRef, {
+        student_id: studentId,
+        school_id: schoolId,
+        term_id: data.termId,
+        total_amount: data.amount,
+        amount_paid: 0,
+        notes: null,
+        created_by: decoded.uid,
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
+      })
+      created++
     }
-
-    const feeRef = adminDb().collection('fees').doc()
-    batch.set(feeRef, {
-      student_id: studentId,
-      school_id: schoolId,
-      term_id: data.termId,
-      total_amount: data.amount,
-      amount_paid: 0,
-      notes: null,
-      created_by: decoded.uid,
-      created_at: Timestamp.now(),
-      updated_at: Timestamp.now(),
-    })
-    created++
+    await batch.commit()
   }
-  await batch.commit()
 
   return { success: true, id: docRef.id, created, skipped }
 }
@@ -131,24 +159,28 @@ export async function getFeeStructuresBySchool(schoolId: string) {
     .orderBy('created_at', 'desc')
     .get()
 
-  const structures = await Promise.all(
-    snap.docs.map(async (doc) => {
-      const data = doc.data()
-      const [classDoc, termDoc] = await Promise.all([
-        adminDb().collection('classes').doc(data.class_id).get(),
-        adminDb().collection('terms').doc(data.term_id).get(),
-      ])
+  if (snap.empty) return []
 
-      return serializeTimestamps({
-        id: doc.id,
-        ...data,
-        class: classDoc.exists ? { id: classDoc.id, ...classDoc.data() } : null,
-        term: termDoc.exists ? { id: termDoc.id, ...termDoc.data() } : null,
-      } as any)
-    })
-  )
+  // Batch fetch all related classes and terms in 2 queries instead of 2N
+  const classIds = [...new Set(snap.docs.map(d => d.data().class_id as string))]
+  const termIds  = [...new Set(snap.docs.map(d => d.data().term_id  as string))]
 
-  return structures
+  const [classMap, termMap] = await Promise.all([
+    batchGetByIds('classes', classIds),
+    batchGetByIds('terms',   termIds),
+  ])
+
+  return snap.docs.map(doc => {
+    const data = doc.data()
+    const classData = classMap.get(data.class_id as string)
+    const termData  = termMap.get(data.term_id   as string)
+    return serializeTimestamps({
+      id: doc.id,
+      ...data,
+      class: classData ? { id: data.class_id, ...classData } : null,
+      term:  termData  ? { id: data.term_id,  ...termData  } : null,
+    } as any)
+  })
 }
 
 // ── Auto-generate fee records from fee structures ──────────────────────────
@@ -179,39 +211,42 @@ export async function autoGenerateFeeRecords(
     .where('status', '==', 'active')
     .get()
 
+  const studentIds = studentsSnap.docs.map(d => d.id)
   let created = 0
   let skipped = 0
 
-  for (const studentDoc of studentsSnap.docs) {
-    const studentId = studentDoc.id
+  if (studentIds.length > 0) {
+    // Batch check existing fees — no per-student queries
+    const existingFeeSnaps = await Promise.all(
+      chunk(studentIds, 30).map(c =>
+        adminDb()
+          .collection('fees')
+          .where('school_id', '==', schoolId)
+          .where('term_id', '==', termId)
+          .where('student_id', 'in', c)
+          .get()
+      )
+    )
+    const alreadyHasFee = new Set(existingFeeSnaps.flatMap(s => s.docs.map(d => d.data().student_id as string)))
 
-    // Check if fee record already exists
-    const existingSnap = await adminDb()
-      .collection('fees')
-      .where('school_id', '==', schoolId)
-      .where('student_id', '==', studentId)
-      .where('term_id', '==', termId)
-      .limit(1)
-      .get()
-
-    if (!existingSnap.empty) {
-      skipped++
-      continue
+    const batch = adminDb().batch()
+    for (const studentId of studentIds) {
+      if (alreadyHasFee.has(studentId)) { skipped++; continue }
+      const feeRef = adminDb().collection('fees').doc()
+      batch.set(feeRef, {
+        student_id: studentId,
+        school_id: schoolId,
+        term_id: termId,
+        total_amount: amount,
+        amount_paid: 0,
+        notes: null,
+        created_by: decoded.uid,
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
+      })
+      created++
     }
-
-    const feeRef = adminDb().collection('fees').doc()
-    await feeRef.set({
-      student_id: studentId,
-      school_id: schoolId,
-      term_id: termId,
-      total_amount: amount,
-      amount_paid: 0,
-      notes: null,
-      created_by: decoded.uid,
-      created_at: Timestamp.now(),
-      updated_at: Timestamp.now(),
-    })
-    created++
+    await batch.commit()
   }
 
   return { success: true, created, skipped }
@@ -225,24 +260,27 @@ export async function getFeesWithStudents(schoolId: string) {
     .where('school_id', '==', schoolId)
     .get()
 
-  const fees = await Promise.all(
-    feesSnap.docs.map(async (doc) => {
-      const feeData = doc.data()
-      const [studentDoc, termDoc] = await Promise.all([
-        adminDb().collection('students').doc(feeData.student_id).get(),
-        adminDb().collection('terms').doc(feeData.term_id).get(),
-      ])
+  if (feesSnap.empty) return []
 
-      return serializeTimestamps({
-        id: doc.id,
-        ...feeData,
-        student: studentDoc.exists ? { id: studentDoc.id, ...studentDoc.data() } : null,
-        term: termDoc.exists ? { id: termDoc.id, ...termDoc.data() } : null,
-      } as any)
-    })
-  )
+  const studentIds = [...new Set(feesSnap.docs.map(d => d.data().student_id as string))]
+  const termIds    = [...new Set(feesSnap.docs.map(d => d.data().term_id    as string))]
 
-  return fees
+  const [studentMap, termMap] = await Promise.all([
+    batchGetByIds('students', studentIds),
+    batchGetByIds('terms',    termIds),
+  ])
+
+  return feesSnap.docs.map(doc => {
+    const data = doc.data()
+    const studentData = studentMap.get(data.student_id as string)
+    const termData    = termMap.get(data.term_id       as string)
+    return serializeTimestamps({
+      id: doc.id,
+      ...data,
+      student: studentData ? { id: data.student_id, ...studentData } : null,
+      term:    termData    ? { id: data.term_id,    ...termData    } : null,
+    } as any)
+  })
 }
 
 export async function getFeesByClass(schoolId: string, classId: string) {
@@ -435,7 +473,6 @@ export async function recordPayment(
 }
 
 export async function getPaymentsByClass(schoolId: string, classId: string) {
-  // Get students in class
   const studentsSnap = await adminDb()
     .collection('students')
     .where('school_id', '==', schoolId)
@@ -444,48 +481,62 @@ export async function getPaymentsByClass(schoolId: string, classId: string) {
     .orderBy('full_name')
     .get()
 
-  const results = await Promise.all(
-    studentsSnap.docs.map(async (studentDoc) => {
-      const studentData = studentDoc.data()
-      const studentId = studentDoc.id
+  if (studentsSnap.empty) return []
 
-      // Get fee record
-      const feeSnap = await adminDb()
+  const studentIds = studentsSnap.docs.map(d => d.id)
+
+  // Batch fetch all fees for these students in one round trip
+  const feeSnaps = await Promise.all(
+    chunk(studentIds, 30).map(c =>
+      adminDb()
         .collection('fees')
         .where('school_id', '==', schoolId)
-        .where('student_id', '==', studentId)
-        .limit(1)
+        .where('student_id', 'in', c)
         .get()
-
-      if (feeSnap.empty) {
-        return {
-          student: { id: studentId, ...studentData },
-          fee: null,
-          payments: [],
-        }
-      }
-
-      const feeData = feeSnap.docs[0].data()
-      const feeId = feeSnap.docs[0].id
-
-      // Get payments
-      const paymentsSnap = await adminDb()
-        .collection('payments')
-        .where('fee_id', '==', feeId)
-        .orderBy('created_at', 'desc')
-        .get()
-
-      const payments = paymentsSnap.docs.map(d => serializeTimestamps({ id: d.id, ...d.data() } as any))
-
-      return serializeTimestamps({
-        student: { id: studentId, ...studentData },
-        fee: { id: feeId, ...feeData },
-        payments,
-      } as any)
-    })
+    )
   )
+  const feesByStudentId = new Map<string, { id: string; data: FirebaseFirestore.DocumentData }>()
+  const feeIds: string[] = []
+  for (const snap of feeSnaps) {
+    for (const doc of snap.docs) {
+      feesByStudentId.set(doc.data().student_id as string, { id: doc.id, data: doc.data() })
+      feeIds.push(doc.id)
+    }
+  }
 
-  return results
+  // Batch fetch all payments for these fees in one round trip
+  const paymentSnaps = feeIds.length > 0
+    ? await Promise.all(
+        chunk(feeIds, 30).map(c =>
+          adminDb()
+            .collection('payments')
+            .where('fee_id', 'in', c)
+            .orderBy('created_at', 'desc')
+            .get()
+        )
+      )
+    : []
+  const paymentsByFeeId = new Map<string, ReturnType<typeof serializeTimestamps>[]>()
+  for (const snap of paymentSnaps) {
+    for (const doc of snap.docs) {
+      const feeId = doc.data().fee_id as string
+      if (!paymentsByFeeId.has(feeId)) paymentsByFeeId.set(feeId, [])
+      paymentsByFeeId.get(feeId)!.push(serializeTimestamps({ id: doc.id, ...doc.data() } as any))
+    }
+  }
+
+  return studentsSnap.docs.map(studentDoc => {
+    const studentId = studentDoc.id
+    const fee = feesByStudentId.get(studentId)
+    if (!fee) {
+      return { student: serializeTimestamps({ id: studentId, ...studentDoc.data() } as any), fee: null, payments: [] }
+    }
+    return serializeTimestamps({
+      student: { id: studentId, ...studentDoc.data() },
+      fee: { id: fee.id, ...fee.data },
+      payments: paymentsByFeeId.get(fee.id) ?? [],
+    } as any)
+  })
 }
 
 export async function getPaymentsBySchool(schoolId: string) {
@@ -495,111 +546,140 @@ export async function getPaymentsBySchool(schoolId: string) {
     .orderBy('created_at', 'desc')
     .get()
 
-  const payments = await Promise.all(
-    paymentsSnap.docs.map(async (doc) => {
-      const data = doc.data()
-      const [studentDoc, feeDoc] = await Promise.all([
-        adminDb().collection('students').doc(data.student_id).get(),
-        adminDb().collection('fees').doc(data.fee_id).get(),
-      ])
+  if (paymentsSnap.empty) return []
 
-      return serializeTimestamps({
-        id: doc.id,
-        ...data,
-        student: studentDoc.exists ? { id: studentDoc.id, ...studentDoc.data() } : null,
-        fee: feeDoc.exists ? { id: feeDoc.id, ...feeDoc.data() } : null,
-      } as any)
-    })
-  )
+  const studentIds = [...new Set(paymentsSnap.docs.map(d => d.data().student_id as string))]
+  const feeIds     = [...new Set(paymentsSnap.docs.map(d => d.data().fee_id     as string))]
 
-  return payments
+  const [studentMap, feeMap] = await Promise.all([
+    batchGetByIds('students', studentIds),
+    batchGetByIds('fees',     feeIds),
+  ])
+
+  return paymentsSnap.docs.map(doc => {
+    const data = doc.data()
+    const studentData = studentMap.get(data.student_id as string)
+    const feeData     = feeMap.get(data.fee_id         as string)
+    return serializeTimestamps({
+      id: doc.id,
+      ...data,
+      student: studentData ? { id: data.student_id, ...studentData } : null,
+      fee:     feeData     ? { id: data.fee_id,     ...feeData     } : null,
+    } as any)
+  })
 }
 
 // ── Overdue Payments ───────────────────────────────────────────────────────
 
 export async function getOverduePayments(schoolId: string) {
-  // Get all unpaid/partially paid fees
+  const today = new Date().toISOString().split('T')[0]
+
+  // 1. Fetch all fees with an outstanding balance
   const feesSnap = await adminDb()
     .collection('fees')
     .where('school_id', '==', schoolId)
     .get()
 
-  const overdue: any[] = []
+  const unpaidFees = feesSnap.docs.filter(d => {
+    const data = d.data()
+    return ((data.total_amount as number) - (data.amount_paid as number)) > 0
+  })
 
-  for (const feeDoc of feesSnap.docs) {
-    const feeData = feeDoc.data()
-    const balance = (feeData.total_amount as number) - (feeData.amount_paid as number)
+  if (unpaidFees.length === 0) return []
 
-    if (balance <= 0) continue
+  // 2. Batch-fetch all related students, terms, fee_structures in parallel
+  const studentIds    = [...new Set(unpaidFees.map(d => d.data().student_id as string))]
+  const termIds       = [...new Set(unpaidFees.map(d => d.data().term_id    as string))]
 
-    // Get fee structure to check payment deadline
-    const termId = feeData.term_id as string
-    const studentId = feeData.student_id as string
+  const [studentMap, termMap, feeStructuresSnap] = await Promise.all([
+    batchGetByIds('students', studentIds),
+    batchGetByIds('terms',    termIds),
+    adminDb().collection('fee_structures').where('school_id', '==', schoolId).get(),
+  ])
 
-    // Get student's class
-    const studentDoc = await adminDb().collection('students').doc(studentId).get()
-    if (!studentDoc.exists) continue
+  // Build a lookup: "classId|termId" → payment_deadline
+  const deadlineMap = new Map<string, string | null>()
+  for (const doc of feeStructuresSnap.docs) {
+    const d = doc.data()
+    deadlineMap.set(`${d.class_id}|${d.term_id}`, (d.payment_deadline as string) || null)
+  }
 
-    const classId = (studentDoc.data()!).class_id as string
+  // 3. Filter to actually overdue entries and collect classIds for batch fetch
+  type OverdueEntry = {
+    feeId: string; studentId: string; studentName: string
+    classId: string; termId: string
+    totalAmount: number; amountPaid: number; balance: number; deadline: string
+  }
+  const candidates: OverdueEntry[] = []
+  for (const feeDoc of unpaidFees) {
+    const data       = feeDoc.data()
+    const studentId  = data.student_id as string
+    const termId     = data.term_id    as string
+    const studentData = studentMap.get(studentId)
+    if (!studentData) continue
 
-    // Get fee structure for this class + term
-    const feeStructureSnap = await adminDb()
-      .collection('fee_structures')
-      .where('school_id', '==', schoolId)
-      .where('class_id', '==', classId)
-      .where('term_id', '==', termId)
-      .limit(1)
-      .get()
+    const classId  = studentData.class_id as string
+    const deadline = deadlineMap.get(`${classId}|${termId}`)
+    if (!deadline || deadline >= today) continue
 
-    if (feeStructureSnap.empty) continue
-
-    const feeStructure = feeStructureSnap.docs[0].data()
-    const deadline = feeStructure.payment_deadline as string | null
-
-    if (!deadline) continue
-
-    const today = new Date().toISOString().split('T')[0]
-    if (deadline >= today) continue  // Not overdue yet
-
-    // Get linked class and term
-    const [classDoc, termDoc] = await Promise.all([
-      adminDb().collection('classes').doc(classId).get(),
-      adminDb().collection('terms').doc(termId).get(),
-    ])
-
-    // Get parent phone for notifications
-    const parentSnap = await adminDb()
-      .collection('parent_student')
-      .where('student_id', '==', studentId)
-      .where('is_primary', '==', true)
-      .limit(1)
-      .get()
-
-    let parentPhone: string | null = null
-    if (!parentSnap.empty) {
-      const parentId = parentSnap.docs[0].data().parent_id as string
-      const parentDoc = await adminDb().collection('users').doc(parentId).get()
-      if (parentDoc.exists) {
-        parentPhone = ((parentDoc.data() as any).phone as string) || null
-      }
-    }
-
-    overdue.push({
-      feeId: feeDoc.id,
+    candidates.push({
+      feeId:       feeDoc.id,
       studentId,
-      studentName: (studentDoc.data()!).full_name,
-      className: classDoc.exists ? ((classDoc.data() as any).name as string) : 'Unknown',
+      studentName: studentData.full_name as string,
       classId,
-      teacherId: classDoc.exists ? ((classDoc.data() as any).teacher_id as string | null) : null,
-      termName: termDoc.exists ? ((termDoc.data() as any).name as string) : 'Unknown',
-      termYear: termDoc.exists ? ((termDoc.data() as any).year as number) : null,
-      totalAmount: feeData.total_amount as number,
-      amountPaid: feeData.amount_paid as number,
-      balance,
+      termId,
+      totalAmount: data.total_amount as number,
+      amountPaid:  data.amount_paid  as number,
+      balance:     (data.total_amount as number) - (data.amount_paid as number),
       deadline,
-      parentPhone,
     })
   }
 
-  return overdue
+  if (candidates.length === 0) return []
+
+  // 4. Batch-fetch classes and primary parent links
+  const classIds = [...new Set(candidates.map(c => c.classId))]
+  const [classMap, parentStudentSnap] = await Promise.all([
+    batchGetByIds('classes', classIds),
+    adminDb()
+      .collection('parent_student')
+      .where('school_id', '==', schoolId)
+      .where('is_primary', '==', true)
+      .get(),
+  ])
+
+  // Build student → parent_id map
+  const primaryParentByStudent = new Map<string, string>()
+  for (const doc of parentStudentSnap.docs) {
+    const d = doc.data()
+    primaryParentByStudent.set(d.student_id as string, d.parent_id as string)
+  }
+
+  // 5. Batch-fetch parent users for phone numbers
+  const parentIds = [...new Set([...primaryParentByStudent.values()])]
+  const parentMap = await batchGetByIds('users', parentIds)
+
+  // 6. Assemble final result
+  return candidates.map(c => {
+    const classData  = classMap.get(c.classId)
+    const termData   = termMap.get(c.termId)
+    const parentId   = primaryParentByStudent.get(c.studentId)
+    const parentData = parentId ? parentMap.get(parentId) : undefined
+
+    return {
+      feeId:       c.feeId,
+      studentId:   c.studentId,
+      studentName: c.studentName,
+      className:   classData ? (classData.name as string)     : 'Unknown',
+      classId:     c.classId,
+      teacherId:   classData ? (classData.teacher_id as string | null) : null,
+      termName:    termData  ? (termData.name        as string)     : 'Unknown',
+      termYear:    termData  ? (termData.year        as number)     : null,
+      totalAmount: c.totalAmount,
+      amountPaid:  c.amountPaid,
+      balance:     c.balance,
+      deadline:    c.deadline,
+      parentPhone: parentData ? ((parentData.phone as string) || null) : null,
+    }
+  })
 }

@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
         studentName: item.studentName,
         className: item.className,
         termName: item.termName,
-        termYear: item.termYear,
+        termYear: item.termYear ?? new Date().getFullYear(),
         balance: item.balance,
         deadline: item.deadline,
         parentPhone: item.parentPhone,

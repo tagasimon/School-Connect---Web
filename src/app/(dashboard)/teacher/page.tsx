@@ -3,8 +3,7 @@ import { getSessionUid } from '@/lib/firebase/session'
 import { getCurrentProfile, getClassesForTeacher, countCollection } from '@/lib/firebase/queries'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { ClipboardList, BookOpen, ArrowRight } from 'lucide-react'
+import { ClipboardList, BookOpen, ChevronRight } from 'lucide-react'
 
 export default async function TeacherPage() {
   const uid = await getSessionUid()
@@ -37,21 +36,23 @@ export default async function TeacherPage() {
               Take Attendance
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {classes.length === 0 && (
+          <CardContent>
+            {classes.length === 0 ? (
               <p className="text-slate-400 text-sm">No classes assigned yet.</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-3">
+                {classes.map((cls) => (
+                  <Link
+                    key={cls.id}
+                    href={`/teacher/attendance/${cls.id}`}
+                    className="flex items-center justify-between p-4 rounded-lg border border-slate-700 bg-slate-800/50 hover:border-amber-500 transition-colors group"
+                  >
+                    <p className="text-white font-medium">{cls.name}</p>
+                    <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-amber-400 transition-colors" />
+                  </Link>
+                ))}
+              </div>
             )}
-            {classes.map((cls) => (
-              <Link key={cls.id} href={`/teacher/attendance/${cls.id}`}>
-                <Button
-                  variant="outline"
-                  className="w-full justify-between border-slate-700 text-slate-300 hover:border-amber-500 hover:text-amber-400"
-                >
-                  {cls.name}
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              </Link>
-            ))}
           </CardContent>
         </Card>
 
@@ -62,18 +63,23 @@ export default async function TeacherPage() {
               Upload Results
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {classes.map((cls) => (
-              <Link key={cls.id} href={`/teacher/results/${cls.id}`}>
-                <Button
-                  variant="outline"
-                  className="w-full justify-between border-slate-700 text-slate-300 hover:border-blue-500 hover:text-blue-400"
-                >
-                  {cls.name}
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              </Link>
-            ))}
+          <CardContent>
+            {classes.length === 0 ? (
+              <p className="text-slate-400 text-sm">No classes assigned yet.</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-3">
+                {classes.map((cls) => (
+                  <Link
+                    key={cls.id}
+                    href={`/teacher/results/${cls.id}`}
+                    className="flex items-center justify-between p-4 rounded-lg border border-slate-700 bg-slate-800/50 hover:border-blue-500 transition-colors group"
+                  >
+                    <p className="text-white font-medium">{cls.name}</p>
+                    <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-blue-400 transition-colors" />
+                  </Link>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

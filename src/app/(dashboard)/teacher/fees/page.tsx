@@ -26,6 +26,13 @@ function serializeTimestamps<T extends Record<string, unknown>>(data: T): T {
   return result as T
 }
 
+/** Split an array into chunks of at most `size` (Firestore `in` limit is 30). */
+function chunk<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size))
+  return chunks
+}
+
 export default async function TeacherFeesPageRoute() {
   const uid = await getSessionUid()
   if (!uid) redirect('/login')
@@ -54,7 +61,7 @@ export default async function TeacherFeesPageRoute() {
 
   const classData = { id: classSnap.docs[0].id, ...(classSnap.docs[0].data() as any) }
 
-  // Get students in this class (avoid compound index by filtering in JS)
+  // Get students in this class — one query, filter active in JS
   const studentsSnap = await adminDb()
     .collection('students')
     .where('school_id', '==', profile.school_id)
@@ -69,34 +76,61 @@ export default async function TeacherFeesPageRoute() {
       student_number: doc.data().student_number as string | null,
     }))
 
-  // Get fee records for these students
   const studentIds = students.map(s => s.id)
   const fees: Record<string, any> = {}
-
-  for (const studentId of studentIds) {
-    const feeSnap = await adminDb()
-      .collection('fees')
-      .where('school_id', '==', profile.school_id)
-      .where('student_id', '==', studentId)
-      .limit(1)
-      .get()
-
-    if (!feeSnap.empty) {
-      fees[studentId] = serializeTimestamps({ id: feeSnap.docs[0].id, ...feeSnap.docs[0].data() } as any)
-    }
-  }
-
-  // Get payments for these students
   const payments: Record<string, any[]> = {}
-  for (const studentId of studentIds) {
-    const paySnap = await adminDb()
-      .collection('payments')
-      .where('school_id', '==', profile.school_id)
-      .where('student_id', '==', studentId)
-      .orderBy('created_at', 'desc')
-      .get()
 
-    payments[studentId] = paySnap.docs.map(doc => serializeTimestamps({ id: doc.id, ...doc.data() } as any))
+  if (studentIds.length > 0) {
+    // Batch-fetch fees and payments in parallel — one round-trip each
+    // instead of N sequential queries per student.
+    const [feeSnaps, paymentSnaps] = await Promise.all([
+      Promise.all(
+        chunk(studentIds, 30).map(ids =>
+          adminDb()
+            .collection('fees')
+            .where('school_id', '==', profile.school_id)
+            .where('student_id', 'in', ids)
+            .get()
+        )
+      ),
+      Promise.all(
+        chunk(studentIds, 30).map(ids =>
+          adminDb()
+            .collection('payments')
+            .where('school_id', '==', profile.school_id)
+            .where('student_id', 'in', ids)
+            .get()
+        )
+      ),
+    ])
+
+    // Build fees map — keep the most recent fee per student if duplicates exist
+    for (const snap of feeSnaps) {
+      for (const doc of snap.docs) {
+        const data = doc.data()
+        const sid = data.student_id as string
+        if (!fees[sid]) {
+          fees[sid] = serializeTimestamps({ id: doc.id, ...data } as any)
+        }
+      }
+    }
+
+    // Build payments map, then sort each student's payments newest-first
+    for (const snap of paymentSnaps) {
+      for (const doc of snap.docs) {
+        const data = doc.data()
+        const sid = data.student_id as string
+        if (!payments[sid]) payments[sid] = []
+        payments[sid].push(serializeTimestamps({ id: doc.id, ...data } as any))
+      }
+    }
+    for (const sid of Object.keys(payments)) {
+      payments[sid].sort((a, b) => {
+        const aDate = (a.created_at ?? a.payment_date ?? '') as string
+        const bDate = (b.created_at ?? b.payment_date ?? '') as string
+        return bDate > aDate ? 1 : bDate < aDate ? -1 : 0
+      })
+    }
   }
 
   return (
