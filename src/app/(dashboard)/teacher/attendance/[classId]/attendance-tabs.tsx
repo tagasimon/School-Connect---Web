@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, Fragment } from 'react'
+import { useState, useTransition, Fragment, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Check, X, AlertCircle, CheckCircle, Search, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
@@ -200,7 +200,7 @@ function ViewHistoryTab({ classId }: { classId: string }) {
   }
 
   // Load current month on first render
-  useState(() => { load(year, month) })
+  useEffect(() => { load(year, month) }, [])
 
   function prevMonth() {
     const newMonth = month === 1 ? 12 : month - 1
