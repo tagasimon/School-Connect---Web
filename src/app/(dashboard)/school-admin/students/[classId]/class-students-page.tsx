@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   ArrowLeft,
@@ -11,6 +12,7 @@ import {
   DollarSign,
   CheckCircle,
   AlertTriangle,
+  Pencil,
 } from 'lucide-react'
 
 interface StudentData {
@@ -132,6 +134,7 @@ export default function ClassStudentsPage({
                     <th className="text-right py-3 px-4 text-sm text-slate-400 font-medium">Paid</th>
                     <th className="text-right py-3 px-4 text-sm text-slate-400 font-medium">Balance</th>
                     <th className="text-center py-3 px-4 text-sm text-slate-400 font-medium">Status</th>
+                    <th className="py-3 px-4" />
                   </tr>
                 </thead>
                 <tbody>
@@ -174,6 +177,14 @@ export default function ClassStudentsPage({
                           ) : (
                             '—'
                           )}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <Button asChild size="sm" variant="outline" className="border-slate-700 text-slate-400 hover:text-white hover:border-amber-500">
+                            <Link href={`/school-admin/students/${classId}/${student.id}/edit`}>
+                              <Pencil className="w-3 h-3 mr-1" />
+                              Edit
+                            </Link>
+                          </Button>
                         </td>
                         <td className="py-3 px-4 text-center">
                           {!student.fee ? (

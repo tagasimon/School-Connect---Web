@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useTransition } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -12,6 +12,7 @@ import {
   GraduationCap,
   CheckCircle,
   XCircle,
+  FileText,
 } from 'lucide-react'
 import {
   PieChart,
@@ -43,6 +44,8 @@ export default function SchoolAdminReportsPage({
   announcements: Record<string, any>[]
 }) {
   const [activeTab, setActiveTab] = useState<'enrollment' | 'fees' | 'attendance' | 'announcements'>('enrollment')
+  const [pdfPending, startPdfTransition] = useTransition()
+  const chartRef = useRef<HTMLDivElement>(null)
 
   const COLORS = ['#f59e0b', '#3b82f6', '#22c55e', '#a855f7', '#ef4444', '#06b6d4', '#f97316', '#ec4899', '#84cc16', '#6366f1']
 
@@ -60,20 +63,166 @@ export default function SchoolAdminReportsPage({
     URL.revokeObjectURL(url)
   }
 
+  const svgToDataUrl = async (svgEl: SVGElement): Promise<string | null> => {
+    try {
+      const serialized = new XMLSerializer().serializeToString(svgEl)
+      const svgBlob = new Blob([serialized], { type: 'image/svg+xml;charset=utf-8' })
+      const url = URL.createObjectURL(svgBlob)
+      const img = new Image()
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve()
+        img.onerror = () => reject()
+        img.src = url
+      })
+      const canvas = document.createElement('canvas')
+      canvas.width = svgEl.clientWidth || 600
+      canvas.height = svgEl.clientHeight || 280
+      const ctx = canvas.getContext('2d')!
+      ctx.fillStyle = '#1e293b'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      URL.revokeObjectURL(url)
+      return canvas.toDataURL('image/png')
+    } catch {
+      return null
+    }
+  }
+
+  const downloadPDF = (filename: string, title: string) => {
+    startPdfTransition(async () => {
+      const { jsPDF } = await import('jspdf')
+      const autoTable = (await import('jspdf-autotable')).default
+
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const pageW = doc.internal.pageSize.getWidth()
+      let y = 14
+
+      // Header
+      doc.setFontSize(16)
+      doc.setTextColor(245, 158, 11)
+      doc.text(schoolName, 14, y)
+      y += 7
+      doc.setFontSize(12)
+      doc.setTextColor(148, 163, 184)
+      doc.text(title, 14, y)
+      y += 5
+      doc.setDrawColor(51, 65, 85)
+      doc.line(14, y, pageW - 14, y)
+      y += 6
+
+      const addStats = (stats: { label: string; value: string }[]) => {
+        doc.setFontSize(9)
+        doc.setTextColor(148, 163, 184)
+        const colW = (pageW - 28) / stats.length
+        stats.forEach((s, i) => {
+          const x = 14 + i * colW
+          doc.text(s.label, x, y)
+          doc.setFontSize(13)
+          doc.setTextColor(255, 255, 255)
+          doc.text(s.value, x, y + 5)
+          doc.setFontSize(9)
+          doc.setTextColor(148, 163, 184)
+        })
+        y += 14
+      }
+
+      const addChart = async () => {
+        const svgEl = chartRef.current?.querySelector('svg')
+        if (!svgEl) return
+        const imgData = await svgToDataUrl(svgEl as SVGElement)
+        if (!imgData) return
+        const chartH = 55
+        if (y + chartH > doc.internal.pageSize.getHeight() - 14) { doc.addPage(); y = 14 }
+        doc.addImage(imgData, 'PNG', 14, y, pageW - 28, chartH)
+        y += chartH + 4
+      }
+
+      if (activeTab === 'enrollment') {
+        addStats([
+          { label: 'Total Students', value: String(students.length) },
+          { label: 'Active', value: String(activeStudents) },
+          { label: 'Classes', value: String(classes.length) },
+          { label: 'Avg per Class', value: classes.length > 0 ? String(Math.round(activeStudents / classes.length)) : '0' },
+        ])
+        await addChart()
+        autoTable(doc, {
+          startY: y,
+          head: [['Class', 'Students', '% of Total']],
+          body: enrollmentByClass.map(c => [
+            c.className,
+            String(c.studentCount),
+            `${activeStudents > 0 ? ((c.studentCount / activeStudents) * 100).toFixed(1) : 0}%`,
+          ]),
+          styles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontSize: 9 },
+          headStyles: { fillColor: [30, 41, 59], textColor: [245, 158, 11] },
+          alternateRowStyles: { fillColor: [30, 41, 59] },
+        })
+      } else if (activeTab === 'fees') {
+        addStats([
+          { label: 'Total Billed', value: `UGX ${totalBilled.toLocaleString()}` },
+          { label: 'Collected', value: `UGX ${totalPaid.toLocaleString()}` },
+          { label: 'Outstanding', value: `UGX ${(totalBilled - totalPaid).toLocaleString()}` },
+        ])
+        autoTable(doc, {
+          startY: y,
+          head: [['Class', 'Billed', 'Collected', 'Balance', 'Collection %']],
+          body: feesByClass.map(c => [
+            c.className,
+            `UGX ${c.billed.toLocaleString()}`,
+            `UGX ${c.paid.toLocaleString()}`,
+            `UGX ${c.balance.toLocaleString()}`,
+            `${c.collectionRate}%`,
+          ]),
+          styles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontSize: 9 },
+          headStyles: { fillColor: [30, 41, 59], textColor: [245, 158, 11] },
+          alternateRowStyles: { fillColor: [30, 41, 59] },
+        })
+      } else if (activeTab === 'attendance') {
+        addStats([
+          { label: 'Total Records', value: String(attendance.length) },
+          { label: 'Present', value: String(presentCount) },
+          { label: 'Absent', value: String(absentCount) },
+        ])
+        await addChart()
+        autoTable(doc, {
+          startY: y,
+          head: [['Class', 'Present', 'Absent', 'Attendance %']],
+          body: attendanceByClass.map(c => [c.className, String(c.present), String(c.absent), `${c.rate}%`]),
+          styles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontSize: 9 },
+          headStyles: { fillColor: [30, 41, 59], textColor: [245, 158, 11] },
+          alternateRowStyles: { fillColor: [30, 41, 59] },
+        })
+      } else if (activeTab === 'announcements') {
+        autoTable(doc, {
+          startY: y,
+          head: [['Title', 'Target', 'SMS Sent', 'Date']],
+          body: announcements.map(a => [
+            a.title,
+            a.target,
+            a.sms_sent ? 'Yes' : 'No',
+            a.created_at?._seconds ? new Date(a.created_at._seconds * 1000).toLocaleDateString() : '—',
+          ]),
+          styles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontSize: 9 },
+          headStyles: { fillColor: [30, 41, 59], textColor: [245, 158, 11] },
+          alternateRowStyles: { fillColor: [30, 41, 59] },
+        })
+      }
+
+      doc.save(filename)
+    })
+  }
+
   const totalBilled = fees.reduce((sum, f) => sum + (f.total_amount as number), 0)
   const totalPaid = fees.reduce((sum, f) => sum + (f.amount_paid as number), 0)
   const activeStudents = students.filter(s => s.status === 'active').length
   const presentCount = attendance.filter(a => a.status === 'present').length
   const absentCount = attendance.filter(a => a.status === 'absent').length
 
-  // Enrollment by class
   const enrollmentByClass = classes.map(cls => ({
     className: cls.name as string,
     studentCount: students.filter(s => s.class_id === cls.id && s.status === 'active').length,
   }))
 
-  // Fees by class
-  const classMap = new Map(classes.map(c => [c.id, c.name as string]))
   const feesByClass = classes.map(cls => {
     const classStudents = students.filter(s => s.class_id === cls.id)
     const classStudentIds = new Set(classStudents.map(s => s.id))
@@ -89,7 +238,6 @@ export default function SchoolAdminReportsPage({
     }
   })
 
-  // Attendance summary by class
   const attendanceByClass = classes.map(cls => {
     const classStudents = students.filter(s => s.class_id === cls.id)
     const classStudentIds = new Set(classStudents.map(s => s.id))
@@ -137,6 +285,9 @@ export default function SchoolAdminReportsPage({
         ))}
       </div>
 
+      {/* Charts are captured per-tab via chartRef */}
+      <div>
+
       {/* ── Enrollment Tab ───────────────────────────────────────────── */}
       {activeTab === 'enrollment' && (
         <>
@@ -173,7 +324,7 @@ export default function SchoolAdminReportsPage({
             </Card>
           </div>
 
-          <Card className="bg-slate-900 border-slate-800">
+          <Card className="bg-slate-900 border-slate-800 mt-4">
             <CardHeader>
               <CardTitle className="text-white">Student Distribution by Class</CardTitle>
             </CardHeader>
@@ -181,6 +332,7 @@ export default function SchoolAdminReportsPage({
               {enrollmentByClass.filter(c => c.studentCount > 0).length === 0 ? (
                 <p className="text-slate-400 text-center py-8">No enrollment data yet.</p>
               ) : (
+                <div ref={chartRef}>
                 <ResponsiveContainer width="100%" height={280}>
                   <PieChart>
                     <Pie
@@ -201,11 +353,12 @@ export default function SchoolAdminReportsPage({
                     <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} />
                   </PieChart>
                 </ResponsiveContainer>
+                </div>
               )}
             </CardContent>
           </Card>
 
-          <Card className="bg-slate-900 border-slate-800">
+          <Card className="bg-slate-900 border-slate-800 mt-4">
             <CardHeader>
               <CardTitle className="text-white">Enrollment by Class</CardTitle>
             </CardHeader>
@@ -235,21 +388,32 @@ export default function SchoolAdminReportsPage({
             </CardContent>
           </Card>
 
-          <Button
-            onClick={() => downloadCSV(
-              `${schoolName}_enrollment.csv`,
-              ['Class', 'Student Count', '% of Total'],
-              enrollmentByClass.map(c => [
-                c.className,
-                String(c.studentCount),
-                `${activeStudents > 0 ? ((c.studentCount / activeStudents) * 100).toFixed(1) : 0}%`,
-              ])
-            )}
-            className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold"
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Download Enrollment CSV
-          </Button>
+          <div className="flex gap-3 mt-4">
+            <Button
+              onClick={() => downloadCSV(
+                `${schoolName}_enrollment.csv`,
+                ['Class', 'Student Count', '% of Total'],
+                enrollmentByClass.map(c => [
+                  c.className,
+                  String(c.studentCount),
+                  `${activeStudents > 0 ? ((c.studentCount / activeStudents) * 100).toFixed(1) : 0}%`,
+                ])
+              )}
+              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Download CSV
+            </Button>
+            <Button
+              onClick={() => downloadPDF(`${schoolName}_enrollment.pdf`, 'Enrollment Report')}
+              disabled={pdfPending}
+              variant="outline"
+              className="border-slate-700 text-slate-300 hover:text-white hover:border-amber-500"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              {pdfPending ? 'Generating...' : 'Download PDF'}
+            </Button>
+          </div>
         </>
       )}
 
@@ -286,7 +450,7 @@ export default function SchoolAdminReportsPage({
             </Card>
           </div>
 
-          <Card className="bg-slate-900 border-slate-800">
+          <Card className="bg-slate-900 border-slate-800 mt-4">
             <CardHeader>
               <CardTitle className="text-white">Fee Collection by Class</CardTitle>
             </CardHeader>
@@ -328,23 +492,34 @@ export default function SchoolAdminReportsPage({
             </CardContent>
           </Card>
 
-          <Button
-            onClick={() => downloadCSV(
-              `${schoolName}_fees.csv`,
-              ['Class', 'Total Billed', 'Total Collected', 'Balance', 'Collection %'],
-              feesByClass.map(c => [
-                c.className,
-                `UGX ${c.billed.toLocaleString()}`,
-                `UGX ${c.paid.toLocaleString()}`,
-                `UGX ${c.balance.toLocaleString()}`,
-                `${c.collectionRate}%`,
-              ])
-            )}
-            className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold"
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Download Fee Report CSV
-          </Button>
+          <div className="flex gap-3 mt-4">
+            <Button
+              onClick={() => downloadCSV(
+                `${schoolName}_fees.csv`,
+                ['Class', 'Total Billed', 'Total Collected', 'Balance', 'Collection %'],
+                feesByClass.map(c => [
+                  c.className,
+                  `UGX ${c.billed.toLocaleString()}`,
+                  `UGX ${c.paid.toLocaleString()}`,
+                  `UGX ${c.balance.toLocaleString()}`,
+                  `${c.collectionRate}%`,
+                ])
+              )}
+              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Download CSV
+            </Button>
+            <Button
+              onClick={() => downloadPDF(`${schoolName}_fees.pdf`, 'Fee Collection Report')}
+              disabled={pdfPending}
+              variant="outline"
+              className="border-slate-700 text-slate-300 hover:text-white hover:border-amber-500"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              {pdfPending ? 'Generating...' : 'Download PDF'}
+            </Button>
+          </div>
         </>
       )}
 
@@ -381,7 +556,7 @@ export default function SchoolAdminReportsPage({
             </Card>
           </div>
 
-          <Card className="bg-slate-900 border-slate-800">
+          <Card className="bg-slate-900 border-slate-800 mt-4">
             <CardHeader>
               <CardTitle className="text-white">Attendance Rate by Class</CardTitle>
             </CardHeader>
@@ -389,6 +564,7 @@ export default function SchoolAdminReportsPage({
               {attendanceByClass.length === 0 ? (
                 <p className="text-slate-400 text-center py-8">No attendance data yet.</p>
               ) : (
+                <div ref={chartRef}>
                 <ResponsiveContainer width="100%" height={280}>
                   <BarChart
                     data={attendanceByClass.map(c => ({
@@ -410,11 +586,12 @@ export default function SchoolAdminReportsPage({
                     <Bar dataKey="absent" fill="#ef4444" name="Absent %" stackId="a" />
                   </BarChart>
                 </ResponsiveContainer>
+                </div>
               )}
             </CardContent>
           </Card>
 
-          <Card className="bg-slate-900 border-slate-800">
+          <Card className="bg-slate-900 border-slate-800 mt-4">
             <CardHeader>
               <CardTitle className="text-white">Attendance by Class</CardTitle>
             </CardHeader>
@@ -454,17 +631,28 @@ export default function SchoolAdminReportsPage({
             </CardContent>
           </Card>
 
-          <Button
-            onClick={() => downloadCSV(
-              `${schoolName}_attendance.csv`,
-              ['Class', 'Present', 'Absent', 'Attendance %'],
-              attendanceByClass.map(c => [c.className, String(c.present), String(c.absent), `${c.rate}%`])
-            )}
-            className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold"
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Download Attendance CSV
-          </Button>
+          <div className="flex gap-3 mt-4">
+            <Button
+              onClick={() => downloadCSV(
+                `${schoolName}_attendance.csv`,
+                ['Class', 'Present', 'Absent', 'Attendance %'],
+                attendanceByClass.map(c => [c.className, String(c.present), String(c.absent), `${c.rate}%`])
+              )}
+              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Download CSV
+            </Button>
+            <Button
+              onClick={() => downloadPDF(`${schoolName}_attendance.pdf`, 'Attendance Report')}
+              disabled={pdfPending}
+              variant="outline"
+              className="border-slate-700 text-slate-300 hover:text-white hover:border-amber-500"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              {pdfPending ? 'Generating...' : 'Download PDF'}
+            </Button>
+          </div>
         </>
       )}
 
@@ -517,24 +705,37 @@ export default function SchoolAdminReportsPage({
             </CardContent>
           </Card>
 
-          <Button
-            onClick={() => downloadCSV(
-              `${schoolName}_announcements.csv`,
-              ['Title', 'Target', 'SMS Sent', 'Date'],
-              announcements.map(a => [
-                a.title,
-                a.target,
-                a.sms_sent ? 'Yes' : 'No',
-                a.created_at?._seconds ? new Date(a.created_at._seconds * 1000).toLocaleDateString() : '—',
-              ])
-            )}
-            className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold"
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Download Announcements CSV
-          </Button>
+          <div className="flex gap-3 mt-4">
+            <Button
+              onClick={() => downloadCSV(
+                `${schoolName}_announcements.csv`,
+                ['Title', 'Target', 'SMS Sent', 'Date'],
+                announcements.map(a => [
+                  a.title,
+                  a.target,
+                  a.sms_sent ? 'Yes' : 'No',
+                  a.created_at?._seconds ? new Date(a.created_at._seconds * 1000).toLocaleDateString() : '—',
+                ])
+              )}
+              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Download CSV
+            </Button>
+            <Button
+              onClick={() => downloadPDF(`${schoolName}_announcements.pdf`, 'Announcements Log')}
+              disabled={pdfPending}
+              variant="outline"
+              className="border-slate-700 text-slate-300 hover:text-white hover:border-amber-500"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              {pdfPending ? 'Generating...' : 'Download PDF'}
+            </Button>
+          </div>
         </>
       )}
+
+      </div>
     </div>
   )
 }

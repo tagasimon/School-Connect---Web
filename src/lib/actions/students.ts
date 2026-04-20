@@ -322,6 +322,97 @@ async function autoGenerateFeeForStudent(
   })
 }
 
+// ── Student Update ─────────────────────────────────────────────────────────
+
+export async function updateStudent(
+  studentId: string,
+  data: {
+    fullName?: string
+    gender?: string
+    dateOfBirth?: string
+    classId?: string
+    parentName?: string
+    parentPhone?: string
+    parentRelationship?: string
+  }
+) {
+  await verifySession()
+
+  const studentRef = adminDb().collection('students').doc(studentId)
+  const studentDoc = await studentRef.get()
+  if (!studentDoc.exists) throw new Error('Student not found')
+
+  const studentUpdate: Record<string, unknown> = { updated_at: Timestamp.now() }
+  if (data.fullName !== undefined) studentUpdate.full_name = data.fullName
+  if (data.gender !== undefined) studentUpdate.gender = data.gender
+  if (data.dateOfBirth !== undefined) studentUpdate.date_of_birth = Timestamp.fromDate(new Date(data.dateOfBirth))
+  if (data.classId !== undefined) studentUpdate.class_id = data.classId
+
+  await studentRef.update(studentUpdate)
+
+  // Update parent info if provided
+  if (data.parentName !== undefined || data.parentPhone !== undefined || data.parentRelationship !== undefined) {
+    const linkSnap = await adminDb()
+      .collection('parent_student')
+      .where('student_id', '==', studentId)
+      .where('is_primary', '==', true)
+      .limit(1)
+      .get()
+
+    if (!linkSnap.empty) {
+      const link = linkSnap.docs[0]
+      const parentId = link.data().parent_id as string
+
+      const parentUpdate: Record<string, unknown> = { updated_at: Timestamp.now() }
+      if (data.parentName !== undefined) parentUpdate.full_name = data.parentName
+      if (data.parentPhone !== undefined) parentUpdate.phone = data.parentPhone
+      await adminDb().collection('users').doc(parentId).update(parentUpdate)
+
+      if (data.parentRelationship !== undefined) {
+        await link.ref.update({ relationship: data.parentRelationship })
+      }
+    }
+  }
+
+  return { success: true }
+}
+
+export async function getStudentForEdit(studentId: string) {
+  const studentDoc = await adminDb().collection('students').doc(studentId).get()
+  if (!studentDoc.exists) return null
+
+  const student = { id: studentDoc.id, ...studentDoc.data() } as Record<string, unknown>
+
+  // Serialize date_of_birth
+  const dob = student.date_of_birth as { seconds?: number } | null
+  if (dob?.seconds) {
+    student.date_of_birth = new Date(dob.seconds * 1000).toISOString().split('T')[0]
+  }
+
+  const linkSnap = await adminDb()
+    .collection('parent_student')
+    .where('student_id', '==', studentId)
+    .where('is_primary', '==', true)
+    .limit(1)
+    .get()
+
+  let parent: { id: string; name: string; phone: string; relationship: string } | null = null
+  if (!linkSnap.empty) {
+    const link = linkSnap.docs[0]
+    const parentDoc = await adminDb().collection('users').doc(link.data().parent_id as string).get()
+    if (parentDoc.exists) {
+      parent = {
+        id: parentDoc.id,
+        name: (parentDoc.data()?.full_name as string) || '',
+        phone: (parentDoc.data()?.phone as string) || '',
+        relationship: (link.data().relationship as string) || '',
+      }
+    }
+  }
+
+  return { student, parent }
+}
+
 // ── Class-based student queries ────────────────────────────────────────────
 
 // Firestore `in` filter max is 30 items — chunk IDs and merge results

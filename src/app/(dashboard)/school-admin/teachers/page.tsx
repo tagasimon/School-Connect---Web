@@ -4,7 +4,7 @@ import { getCurrentProfile } from '@/lib/firebase/queries'
 import { adminDb } from '@/lib/firebase/admin'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Users, Plus, Mail, Phone } from 'lucide-react'
+import { Users, Plus, Mail, Phone, Pencil } from 'lucide-react'
 import Link from 'next/link'
 
 export default async function SchoolAdminTeachersPage() {
@@ -116,15 +116,23 @@ export default async function SchoolAdminTeachersPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-slate-300 text-sm">
-                      {teacherClasses[teacher.id]?.length || 0} classes
-                    </p>
-                    {teacherClasses[teacher.id] && (
-                      <p className="text-slate-500 text-xs">
-                        {teacherClasses[teacher.id].join(', ')}
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <p className="text-slate-300 text-sm">
+                        {teacherClasses[teacher.id]?.length || 0} classes
                       </p>
-                    )}
+                      {teacherClasses[teacher.id] && (
+                        <p className="text-slate-500 text-xs">
+                          {teacherClasses[teacher.id].join(', ')}
+                        </p>
+                      )}
+                    </div>
+                    <Button asChild size="sm" variant="outline" className="border-slate-700 text-slate-400 hover:text-white hover:border-amber-500">
+                      <Link href={`/school-admin/teachers/${teacher.id}/edit`}>
+                        <Pencil className="w-3 h-3 mr-1" />
+                        Edit
+                      </Link>
+                    </Button>
                   </div>
                 </div>
               ))
