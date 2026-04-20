@@ -2,9 +2,8 @@ import { redirect } from 'next/navigation'
 import { getSessionUid } from '@/lib/firebase/session'
 import { getCurrentProfile, getClassesForTeacher } from '@/lib/firebase/queries'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import Link from 'next/link'
-import { BookOpen, Upload, Eye } from 'lucide-react'
+import { BookOpen, ChevronRight } from 'lucide-react'
 
 export default async function TeacherResultsPage() {
   const uid = await getSessionUid()
@@ -19,7 +18,7 @@ export default async function TeacherResultsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Results</h1>
-        <p className="text-slate-400 text-sm mt-1">Upload results or view past results by class</p>
+        <p className="text-slate-400 text-sm mt-1">Select a class to view results</p>
       </div>
 
       <Card className="bg-slate-900 border-slate-800">
@@ -35,9 +34,10 @@ export default async function TeacherResultsPage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {classes.map((cls) => (
-                <div
+                <Link
                   key={cls.id}
-                  className="p-4 rounded-lg border border-slate-700 bg-slate-800/50 space-y-3"
+                  href={`/teacher/results/${cls.id}/view`}
+                  className="flex items-center justify-between p-4 rounded-lg border border-slate-700 bg-slate-800/50 hover:border-blue-500 transition-colors group"
                 >
                   <div>
                     <p className="text-white font-medium">{cls.name}</p>
@@ -45,29 +45,8 @@ export default async function TeacherResultsPage() {
                       <p className="text-slate-400 text-sm">{cls.term_name}</p>
                     )}
                   </div>
-                  <div className="flex gap-2">
-                    <Link href={`/teacher/results/${cls.id}`} className="flex-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full border-slate-600 text-slate-300 hover:border-blue-500 hover:text-blue-400 gap-1.5"
-                      >
-                        <Upload className="w-3.5 h-3.5" />
-                        Upload
-                      </Button>
-                    </Link>
-                    <Link href={`/teacher/results/${cls.id}/view`} className="flex-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full border-slate-600 text-slate-300 hover:border-amber-500 hover:text-amber-400 gap-1.5"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        View Results
-                      </Button>
-                    </Link>
-                  </div>
-                </div>
+                  <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-blue-400 transition-colors" />
+                </Link>
               ))}
             </div>
           )}

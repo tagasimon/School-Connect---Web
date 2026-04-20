@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { getSessionUid } from '@/lib/firebase/session'
 import { getCurrentProfile } from '@/lib/firebase/queries'
 import { adminDb } from '@/lib/firebase/admin'
-import AttendanceForm from './attendance-form'
+import AttendanceTabs from './attendance-tabs'
 
 export default async function AttendanceClassPage({
   params,
@@ -17,7 +17,7 @@ export default async function AttendanceClassPage({
   if (!profile?.school_id) redirect('/login')
 
   const classDoc = await adminDb().collection('classes').doc(classId).get()
-  if (!classDoc.exists) redirect('/teacher')
+  if (!classDoc.exists) redirect('/teacher/attendance')
 
   const studentsSnap = await adminDb()
     .collection('students')
@@ -33,10 +33,10 @@ export default async function AttendanceClassPage({
     }))
 
   return (
-    <AttendanceForm
-      params={{ classId }}
+    <AttendanceTabs
+      classId={classId}
+      className={classDoc.data()?.name as string || 'Class'}
       students={students}
-      className={classDoc.data()?.name || 'Class'}
     />
   )
 }

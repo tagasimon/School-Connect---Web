@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, Fragment } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, FileText, Loader2 } from 'lucide-react'
+import { ArrowLeft, FileText, Loader2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getClassResultsForTerm } from '@/lib/actions/results'
@@ -162,16 +162,24 @@ export default function ViewResultsPage({
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <Link href="/teacher/results">
+            <Button variant="outline" size="icon" className="border-slate-700 text-slate-400">
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold text-white">Results — {className}</h1>
+            <p className="text-slate-400 text-sm mt-1">All subjects for every student</p>
+          </div>
+        </div>
         <Link href={`/teacher/results/${classId}`}>
-          <Button variant="outline" size="icon" className="border-slate-700 text-slate-400">
-            <ArrowLeft className="w-4 h-4" />
+          <Button className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold gap-2 shrink-0">
+            <Upload className="w-4 h-4" />
+            Upload Results
           </Button>
         </Link>
-        <div>
-          <h1 className="text-2xl font-bold text-white">Results — {className}</h1>
-          <p className="text-slate-400 text-sm mt-1">All subjects for every student</p>
-        </div>
       </div>
 
       {noTerms ? (
@@ -268,10 +276,10 @@ export default function ViewResultsPage({
                         <th className="bg-slate-900 sticky left-6 z-10 border-b border-slate-800" />
                         <th className="bg-slate-900 border-b border-slate-800" />
                         {subjects.map(s => (
-                          <>
-                            <th key={`${s.id}-marks`} className="text-center py-1.5 px-2 text-slate-500 text-xs font-normal border-b border-slate-800 bg-slate-900 whitespace-nowrap">Marks</th>
-                            <th key={`${s.id}-grade`} className="text-center py-1.5 px-2 text-slate-500 text-xs font-normal border-b border-slate-800 bg-slate-900 whitespace-nowrap">Grade</th>
-                          </>
+                          <Fragment key={s.id}>
+                            <th className="text-center py-1.5 px-2 text-slate-500 text-xs font-normal border-b border-slate-800 bg-slate-900 whitespace-nowrap">Marks</th>
+                            <th className="text-center py-1.5 px-2 text-slate-500 text-xs font-normal border-b border-slate-800 bg-slate-900 whitespace-nowrap">Grade</th>
+                          </Fragment>
                         ))}
                       </tr>
                     </thead>
@@ -284,21 +292,21 @@ export default function ViewResultsPage({
                           {subjects.map(s => {
                             const r = student.results[s.id]
                             return r ? (
-                              <>
-                                <td key={`${s.id}-marks`} className="py-3 px-3 text-slate-300 text-center border-b border-slate-800 whitespace-nowrap">
+                              <Fragment key={s.id}>
+                                <td className="py-3 px-3 text-slate-300 text-center border-b border-slate-800 whitespace-nowrap">
                                   {r.marks_obtained}/{r.marks_total}
                                 </td>
-                                <td key={`${s.id}-grade`} className="py-3 px-2 text-center border-b border-slate-800">
+                                <td className="py-3 px-2 text-center border-b border-slate-800">
                                   <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${gradeColor(r.grade)}`}>
                                     {r.grade}
                                   </span>
                                 </td>
-                              </>
+                              </Fragment>
                             ) : (
-                              <>
-                                <td key={`${s.id}-marks`} className="py-3 px-3 text-slate-600 text-center border-b border-slate-800">—</td>
-                                <td key={`${s.id}-grade`} className="py-3 px-3 text-slate-600 text-center border-b border-slate-800">—</td>
-                              </>
+                              <Fragment key={s.id}>
+                                <td className="py-3 px-3 text-slate-600 text-center border-b border-slate-800">—</td>
+                                <td className="py-3 px-3 text-slate-600 text-center border-b border-slate-800">—</td>
+                              </Fragment>
                             )
                           })}
                         </tr>
