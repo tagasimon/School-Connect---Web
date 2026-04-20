@@ -119,3 +119,53 @@ export async function getSubjectsForClass(classId: string) {
 
   return snap.docs.map(doc => serializeTimestamps({ id: doc.id, ...doc.data() }) as any)
 }
+
+export async function getAllTerms(schoolId: string) {
+  const snap = await adminDb()
+    .collection('terms')
+    .where('school_id', '==', schoolId)
+    .orderBy('created_at', 'desc')
+    .get()
+
+  return snap.docs.map(doc => ({
+    id: doc.id,
+    name: doc.data().name as string,
+    is_current: doc.data().is_current as boolean | undefined,
+  }))
+}
+
+export async function getClassResultsForTerm(classId: string, termId: string) {
+  const [subjectsSnap, studentsSnap, resultsSnap] = await Promise.all([
+    adminDb().collection('subjects').where('class_id', '==', classId).get(),
+    adminDb().collection('students').where('class_id', '==', classId).where('status', '==', 'active').get(),
+    adminDb().collection('results').where('class_id', '==', classId).where('term_id', '==', termId).get(),
+  ])
+
+  const subjects = subjectsSnap.docs
+    .map(d => ({ id: d.id, name: d.data().name as string }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+
+  type SubjectResult = { marks_obtained: number; marks_total: number; grade: string; remarks: string }
+  const resultMap: Record<string, Record<string, SubjectResult>> = {}
+  for (const doc of resultsSnap.docs) {
+    const d = doc.data()
+    if (!resultMap[d.student_id as string]) resultMap[d.student_id as string] = {}
+    resultMap[d.student_id as string][d.subject_id as string] = {
+      marks_obtained: d.marks_obtained as number,
+      marks_total: d.marks_total as number,
+      grade: d.grade as string,
+      remarks: d.remarks as string,
+    }
+  }
+
+  const students = studentsSnap.docs
+    .map(doc => ({
+      student_id: doc.id,
+      full_name: doc.data().full_name as string,
+      student_number: doc.data().student_number as string | null,
+      results: resultMap[doc.id] ?? {},
+    }))
+    .sort((a, b) => a.full_name.localeCompare(b.full_name))
+
+  return { subjects, students }
+}
