@@ -3,10 +3,11 @@
 import { useState, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { addStudentWithParent } from '@/lib/actions/students'
+import { searchParentByPhone } from '@/lib/actions/parents'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { ArrowLeft, CheckCircle, User, Users, DollarSign } from 'lucide-react'
+import { ArrowLeft, CheckCircle, User, Users, DollarSign, Search } from 'lucide-react'
 import Link from 'next/link'
 
 export default function AddStudentPage({
@@ -29,9 +30,19 @@ export default function AddStudentPage({
   const [studentNumber, setStudentNumber] = useState('')
   const [dateOfBirth, setDateOfBirth] = useState('')
   const [gender, setGender] = useState('male')
+
+  // Parent state
+  const [parentMode, setParentMode] = useState<'new' | 'existing'>('new')
   const [parentName, setParentName] = useState('')
   const [parentPhone, setParentPhone] = useState('')
+  const [parentPassword, setParentPassword] = useState('')
   const [parentRelationship, setParentRelationship] = useState('parent')
+  // Existing parent search
+  const [searchPhone, setSearchPhone] = useState('')
+  const [isSearching, setIsSearching] = useState(false)
+  const [foundParent, setFoundParent] = useState<{ id: string; name: string; phone: string } | null>(null)
+  const [searchError, setSearchError] = useState('')
+
   const [selectedCommitments, setSelectedCommitments] = useState<Set<string>>(new Set())
 
   const toggleCommitment = (id: string) => {
@@ -47,8 +58,27 @@ export default function AddStudentPage({
     .filter(ct => selectedCommitments.has(ct.id))
     .reduce((sum, ct) => sum + ct.default_amount, 0)
 
+  const handleSearchParent = async () => {
+    if (!searchPhone) return
+    setIsSearching(true)
+    setSearchError('')
+    setFoundParent(null)
+    const result = await searchParentByPhone(searchPhone)
+    if (result) {
+      setFoundParent(result)
+    } else {
+      setSearchError('No parent found with this phone number. Create a new parent instead.')
+    }
+    setIsSearching(false)
+  }
+
+  const parentStepValid = parentMode === 'existing'
+    ? !!foundParent
+    : !!(parentName && parentPhone && parentPassword)
+
   const handleSubmit = () => {
-    if (!selectedClass || !fullName || !dateOfBirth || !parentName || !parentPhone) return
+    if (!selectedClass || !fullName || !dateOfBirth) return
+    if (!parentStepValid) return
 
     startTransition(async () => {
       const result = await addStudentWithParent(schoolId, {
@@ -57,8 +87,10 @@ export default function AddStudentPage({
         dateOfBirth,
         gender: gender as 'male' | 'female' | 'other',
         classId: selectedClass,
-        parentName,
-        parentPhone,
+        parentId: parentMode === 'existing' ? foundParent!.id : undefined,
+        parentName: parentMode === 'new' ? parentName : undefined,
+        parentPhone: parentMode === 'new' ? parentPhone : undefined,
+        parentPassword: parentMode === 'new' ? parentPassword : undefined,
         parentRelationship,
         commitmentIds: Array.from(selectedCommitments),
       })
@@ -199,29 +231,104 @@ export default function AddStudentPage({
         <Card className="bg-slate-900 border-slate-800">
           <CardHeader>
             <CardTitle className="text-white">Parent / Guardian</CardTitle>
-            <CardDescription className="text-slate-400">Parent or guardian contact details for notifications</CardDescription>
+            <CardDescription className="text-slate-400">Link this student to a parent account</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm text-slate-300">Parent Name *</label>
-              <Input
-                value={parentName}
-                onChange={(e) => setParentName(e.target.value)}
-                placeholder="e.g., James Kalule"
-                className="bg-slate-800 border-slate-700 text-white"
-              />
+            {/* Mode toggle */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setParentMode('new'); setFoundParent(null); setSearchError('') }}
+                className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium border transition-colors ${
+                  parentMode === 'new'
+                    ? 'bg-amber-500/20 border-amber-500 text-amber-400'
+                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'
+                }`}
+              >
+                New Parent
+              </button>
+              <button
+                onClick={() => { setParentMode('existing'); setParentName(''); setParentPhone(''); setParentPassword('') }}
+                className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium border transition-colors ${
+                  parentMode === 'existing'
+                    ? 'bg-amber-500/20 border-amber-500 text-amber-400'
+                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'
+                }`}
+              >
+                Existing Parent
+              </button>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm text-slate-300">Phone Number *</label>
-              <Input
-                value={parentPhone}
-                onChange={(e) => setParentPhone(e.target.value)}
-                placeholder="e.g., +256701000001"
-                className="bg-slate-800 border-slate-700 text-white"
-              />
-              <p className="text-xs text-slate-500">Used for SMS notifications and fee alerts</p>
-            </div>
+            {parentMode === 'new' && (
+              <>
+                <div className="space-y-2">
+                  <label className="text-sm text-slate-300">Parent Name *</label>
+                  <Input
+                    value={parentName}
+                    onChange={(e) => setParentName(e.target.value)}
+                    placeholder="e.g., James Kalule"
+                    className="bg-slate-800 border-slate-700 text-white"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm text-slate-300">Phone Number *</label>
+                  <Input
+                    value={parentPhone}
+                    onChange={(e) => setParentPhone(e.target.value)}
+                    placeholder="e.g., +256701000001"
+                    className="bg-slate-800 border-slate-700 text-white"
+                  />
+                  <p className="text-xs text-slate-500">Used for SMS notifications and mobile app login</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm text-slate-300">App Password *</label>
+                  <Input
+                    type="password"
+                    value={parentPassword}
+                    onChange={(e) => setParentPassword(e.target.value)}
+                    placeholder="Set a password for the parent's mobile app"
+                    className="bg-slate-800 border-slate-700 text-white"
+                  />
+                  <p className="text-xs text-slate-500">Share this with the parent so they can log in to the SchoolConnect app</p>
+                </div>
+              </>
+            )}
+
+            {parentMode === 'existing' && (
+              <>
+                <div className="space-y-2">
+                  <label className="text-sm text-slate-300">Search by Phone Number</label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={searchPhone}
+                      onChange={(e) => { setSearchPhone(e.target.value); setFoundParent(null); setSearchError('') }}
+                      placeholder="e.g., +256701000001"
+                      className="bg-slate-800 border-slate-700 text-white"
+                    />
+                    <Button
+                      onClick={handleSearchParent}
+                      disabled={!searchPhone || isSearching}
+                      variant="outline"
+                      className="border-slate-700 text-slate-300 hover:border-amber-500 hover:text-white shrink-0"
+                    >
+                      <Search className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                {searchError && (
+                  <p className="text-sm text-red-400">{searchError}</p>
+                )}
+
+                {foundParent && (
+                  <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+                    <p className="text-green-400 text-sm font-medium">{foundParent.name}</p>
+                    <p className="text-green-400/70 text-xs">{foundParent.phone}</p>
+                  </div>
+                )}
+              </>
+            )}
 
             <div className="space-y-2">
               <label className="text-sm text-slate-300">Relationship</label>
@@ -243,7 +350,7 @@ export default function AddStudentPage({
               </Button>
               <Button
                 onClick={() => setStep(3)}
-                disabled={!parentName || !parentPhone}
+                disabled={!parentStepValid}
                 className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold"
               >
                 Next: Fee Commitments

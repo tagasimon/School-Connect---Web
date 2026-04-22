@@ -127,6 +127,8 @@ export async function getProfile() {
     const decoded = await adminAuth().verifySessionCookie(sessionCookie, true)
     return getCurrentProfile(decoded.uid)
   } catch {
+    // Clear the bad/revoked cookie so the proxy doesn't redirect-loop on next request
+    cookieStore.delete('session')
     return null
   }
 }

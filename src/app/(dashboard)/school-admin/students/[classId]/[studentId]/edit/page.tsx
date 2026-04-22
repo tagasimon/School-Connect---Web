@@ -40,6 +40,7 @@ export default async function StudentEditPage({
     <EditStudentPage
       classId={classId}
       studentId={studentId}
+      schoolId={profile.school_id}
       student={student}
       parent={data.parent}
       allClasses={allClasses}

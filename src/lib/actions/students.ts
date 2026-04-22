@@ -4,6 +4,7 @@ import { adminDb, adminAuth } from '@/lib/firebase/admin'
 import { Timestamp } from 'firebase-admin/firestore'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { phoneToAuthEmail } from '@/lib/utils/phone'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -46,9 +47,11 @@ export async function addStudentWithParent(
     dateOfBirth: string  // YYYY-MM-DD
     gender: 'male' | 'female' | 'other'
     classId: string
-    // Parent info (inline)
-    parentName: string
-    parentPhone: string
+    // Parent: provide existing parentId OR new parent details
+    parentId?: string
+    parentName?: string
+    parentPhone?: string
+    parentPassword?: string
     parentRelationship: string
     // Commitments
     commitmentIds: string[]  // selected commitment type IDs
@@ -70,12 +73,21 @@ export async function addStudentWithParent(
     updated_at: Timestamp.now(),
   })
 
-  // Link parent (create user if needed, or link existing)
-  const parentProfile = await findOrCreateParent(schoolId, data.parentName, data.parentPhone)
+  // Link parent: use existing or create new
+  let parentId = data.parentId
+  if (!parentId && data.parentName && data.parentPhone) {
+    const parentProfile = await findOrCreateParent(
+      schoolId,
+      data.parentName,
+      data.parentPhone,
+      data.parentPassword
+    )
+    parentId = parentProfile?.id
+  }
 
-  if (parentProfile) {
+  if (parentId) {
     await adminDb().collection('parent_student').add({
-      parent_id: parentProfile.id,
+      parent_id: parentId,
       student_id: studentRef.id,
       relationship: data.parentRelationship,
       is_primary: true,
@@ -125,9 +137,6 @@ export async function bulkImportStudents(
     dateOfBirth: string
     gender: 'male' | 'female' | 'other'
     classId: string
-    parentName: string
-    parentPhone: string
-    parentRelationship: string
   }>
 ) {
   const decoded = await verifySession()
@@ -152,19 +161,6 @@ export async function bulkImportStudents(
         created_at: Timestamp.now(),
         updated_at: Timestamp.now(),
       })
-
-      // Link parent
-      const parentProfile = await findOrCreateParent(schoolId, s.parentName, s.parentPhone)
-      if (parentProfile) {
-        const psRef = adminDb().collection('parent_student').doc()
-        batch.set(psRef, {
-          parent_id: parentProfile.id,
-          student_id: studentRef.id,
-          relationship: s.parentRelationship,
-          is_primary: true,
-          created_at: Timestamp.now(),
-        })
-      }
 
       imported++
     } catch (err) {
@@ -224,7 +220,8 @@ export async function createCommitmentType(
 async function findOrCreateParent(
   schoolId: string,
   name: string,
-  phone: string
+  phone: string,
+  password?: string
 ): Promise<{ id: string } | null> {
   // Try to find existing parent by phone
   const existingSnap = await adminDb()
@@ -238,15 +235,40 @@ async function findOrCreateParent(
     return { id: existingSnap.docs[0].id }
   }
 
-  // Create a parent user without auth (just a Firestore profile)
-  // The parent will create a Firebase Auth account later via the mobile app
+  const email = phoneToAuthEmail(phone)
+
+  if (password) {
+    // Create a real Firebase Auth account so the parent can log in immediately
+    try {
+      const userRecord = await adminAuth().createUser({
+        email,
+        password,
+        displayName: name,
+      })
+      await adminDb().collection('users').doc(userRecord.uid).set({
+        email,
+        full_name: name,
+        phone,
+        role: 'parent',
+        school_id: null,
+        has_auth_account: true,
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
+      })
+      return { id: userRecord.uid }
+    } catch {
+      // Fall through to create placeholder if Auth creation fails
+    }
+  }
+
+  // Create a placeholder profile (no Auth account yet)
   const parentRef = adminDb().collection('users').doc()
   await parentRef.set({
-    email: `${phone}@parent.local`,
+    email,
     full_name: name,
     phone,
     role: 'parent',
-    school_id: null,  // parents aren't tied to a specific school at the user level
+    school_id: null,
     created_at: Timestamp.now(),
     updated_at: Timestamp.now(),
   })
@@ -331,8 +353,8 @@ export async function updateStudent(
     gender?: string
     dateOfBirth?: string
     classId?: string
-    parentName?: string
-    parentPhone?: string
+    // parentId = string → assign that parent; null → unlink; undefined → no change
+    parentId?: string | null
     parentRelationship?: string
   }
 ) {
@@ -350,27 +372,23 @@ export async function updateStudent(
 
   await studentRef.update(studentUpdate)
 
-  // Update parent info if provided
-  if (data.parentName !== undefined || data.parentPhone !== undefined || data.parentRelationship !== undefined) {
-    const linkSnap = await adminDb()
+  if (data.parentId !== undefined) {
+    // Remove all existing parent links for this student
+    const existingLinks = await adminDb()
       .collection('parent_student')
       .where('student_id', '==', studentId)
-      .where('is_primary', '==', true)
-      .limit(1)
       .get()
+    await Promise.all(existingLinks.docs.map(d => d.ref.delete()))
 
-    if (!linkSnap.empty) {
-      const link = linkSnap.docs[0]
-      const parentId = link.data().parent_id as string
-
-      const parentUpdate: Record<string, unknown> = { updated_at: Timestamp.now() }
-      if (data.parentName !== undefined) parentUpdate.full_name = data.parentName
-      if (data.parentPhone !== undefined) parentUpdate.phone = data.parentPhone
-      await adminDb().collection('users').doc(parentId).update(parentUpdate)
-
-      if (data.parentRelationship !== undefined) {
-        await link.ref.update({ relationship: data.parentRelationship })
-      }
+    // Assign new parent if provided
+    if (data.parentId !== null) {
+      await adminDb().collection('parent_student').add({
+        parent_id: data.parentId,
+        student_id: studentId,
+        relationship: data.parentRelationship ?? 'parent',
+        is_primary: true,
+        created_at: Timestamp.now(),
+      })
     }
   }
 

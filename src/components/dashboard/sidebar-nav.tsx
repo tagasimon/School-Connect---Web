@@ -31,6 +31,7 @@ const NAV_BY_ROLE: Record<UserRole, { href: string; label: string; icon: React.E
   school_admin: [
     { href: '/school-admin', label: 'Overview', icon: LayoutDashboard },
     { href: '/school-admin/students', label: 'Students', icon: GraduationCap },
+    { href: '/school-admin/parents', label: 'Parents', icon: Users },
     { href: '/school-admin/teachers', label: 'Teachers', icon: Users },
     { href: '/school-admin/classes', label: 'Classes', icon: BookOpen },
     { href: '/school-admin/terms', label: 'Terms', icon: Calendar },

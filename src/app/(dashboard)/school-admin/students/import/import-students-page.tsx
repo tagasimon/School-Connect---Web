@@ -8,9 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { ArrowLeft, Download, Upload, CheckCircle, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 
-const CSV_TEMPLATE = `full_name,student_number,date_of_birth,gender,class_name,parent_name,parent_phone,parent_relationship
-Brian Ssekandi,P3A/001,2018-03-12,male,P3A,James Kalule,+256701000001,parent
-Sharon Nalubega,P3A/002,2018-07-22,female,P3A,Fatuma Nakato,+256701000002,parent`
+const CSV_TEMPLATE = `full_name,student_number,date_of_birth,gender,class_name
+Brian Ssekandi,P3A/001,2018-03-12,male,P3A
+Sharon Nalubega,P3A/002,2018-07-22,female,P3A`
 
 export default function ImportStudentsPage({
   schoolId,
@@ -76,9 +76,6 @@ export default function ImportStudentsPage({
       dateOfBirth: row.date_of_birth || row['date_of_birth'] || '',
       gender: (row.gender || row['gender'] || 'male') as 'male' | 'female' | 'other',
       classId: classMap.get((row.class_name || row['class_name'] || '').toLowerCase()) || '',
-      parentName: row.parent_name || row['parent_name'] || '',
-      parentPhone: row.parent_phone || row['parent_phone'] || '',
-      parentRelationship: row.parent_relationship || row['parent_relationship'] || 'parent',
     }))
 
     // Validate
@@ -88,8 +85,6 @@ export default function ImportStudentsPage({
       if (!s.dateOfBirth) validationErrors.push(`Row ${i + 1}: Date of birth is required`)
       const className = preview[i].class_name || preview[i]['class_name'] || ''
       if (!s.classId) validationErrors.push(`Row ${i + 1}: Class "${className}" not found`)
-      if (!s.parentName) validationErrors.push(`Row ${i + 1}: Parent name is required`)
-      if (!s.parentPhone) validationErrors.push(`Row ${i + 1}: Parent phone is required`)
     })
 
     if (validationErrors.length > 0) {
@@ -145,7 +140,10 @@ export default function ImportStudentsPage({
           </Button>
           <div className="mt-4 p-3 rounded-lg bg-slate-800/50 border border-slate-700">
             <p className="text-slate-400 text-xs font-mono">
-              full_name, student_number, date_of_birth, gender, class_name, parent_name, parent_phone, parent_relationship
+              full_name, student_number, date_of_birth, gender, class_name
+            </p>
+            <p className="text-slate-500 text-xs mt-2">
+              Parents are assigned separately after import. Create parent accounts first under the Parents section.
             </p>
           </div>
         </CardContent>
