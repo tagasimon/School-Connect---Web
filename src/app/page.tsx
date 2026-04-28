@@ -1,5 +1,6 @@
-import { getProfile } from '@/lib/actions/auth'
 import { redirect } from 'next/navigation'
+import { getSessionUid } from '@/lib/firebase/session'
+import { getCurrentProfile } from '@/lib/firebase/queries'
 
 const ROLE_REDIRECTS: Record<string, string> = {
   super_admin: '/super-admin',
@@ -10,11 +11,11 @@ const ROLE_REDIRECTS: Record<string, string> = {
 }
 
 export default async function RootPage() {
-  const profile = await getProfile()
+  const uid = await getSessionUid()
+  if (!uid) redirect('/login')
 
-  if (!profile) {
-    redirect('/login')
-  }
+  const profile = await getCurrentProfile(uid)
+  if (!profile) redirect('/login')
 
   const destination = ROLE_REDIRECTS[profile.role] ?? '/school-admin'
   redirect(destination)
